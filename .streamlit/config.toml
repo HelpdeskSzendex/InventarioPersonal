@@ -1,0 +1,17 @@
+[theme]
+# Paleta de colores primarios
+primaryColor="#0052CC" # Un azul corporativo más fuerte
+
+# Colores de fondo
+backgroundColor="#FFFFFF" # Fondo principal blanco puro
+secondaryBackgroundColor="#F0F2F5" # Un gris muy sutil para contenedores y barras laterales
+
+# Colores de texto
+textColor="#0D1A2E" # Un color casi negro pero más suave para el texto principal
+font="sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[ui]
+hideTopBar=true

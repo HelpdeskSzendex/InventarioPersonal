@@ -1,0 +1,3 @@
+@echo off
+echo Iniciando la aplicacion de gestion de personal...
+streamlit run Personal.py
