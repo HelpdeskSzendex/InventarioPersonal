@@ -117,7 +117,7 @@ if check_login():
         if st.session_state.delegacion_seleccionada is None:
             st.title("🗺️ Selector de Delegaciones")
             st.markdown("Selecciona una delegación para gestionar su personal.")
-            delegaciones = ['Granollers', 'Sabadell', 'Zona Franca', 'Manresa', 'Girona', 'Vilafranca']
+            delegaciones = ['Granollers', 'Sabadell', 'Zona FRANCA', 'Manresa', 'Girona', 'Vilafranca']
             col1, col2, col3 = st.columns(3); columnas = [col1, col2, col3, col1, col2, col3]
             for i, d in enumerate(delegaciones):
                 with columnas[i]: st.button(d, on_click=seleccionar_delegacion, args=[d], use_container_width=True, key=f"btn_{d}")
