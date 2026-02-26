@@ -12,7 +12,7 @@ from utils.db import (
     dar_de_baja, update_file_path, get_estado_licencias_total,
     validate_email, validate_phone
 )
-from utils.auth import render_login_form, logout
+from utils.auth import render_login_form, logout, render_sidebar
 from utils.styles import apply_custom_styles
 
 # --- CONFIGURACIÓN ---
@@ -79,7 +79,7 @@ def render_license_manager(current_list, key_prefix="edit"):
 
 # --- VISTA PARA LECTORES (SOLO LECTURA) ---
 def render_lector_view(user_delegacion):
-    st.title(f"📍 Consulta de Personal: {user_delegacion}")
+    st.markdown(f'<p class="main-header">📍 Consulta: {user_delegacion}</p>', unsafe_allow_html=True)
     tipo = st.selectbox("Selecciona el tipo de personal:", ["Mensajeros", "Oficina"])
     
     tabla = "mensajeros" if tipo == "Mensajeros" else "oficina"
@@ -190,7 +190,7 @@ def render_admin_view():
 
     # Vista Sanitario (Global)
     if delegacion_actual == "Sanitario":
-        st.title(f"⚕️ Vista Global de Personal (Solo Lectura)")
+        st.markdown('<p class="main-header">⚕️ Vista Global de Personal</p>', unsafe_allow_html=True)
         tab_mensajeros, tab_oficina = st.tabs(["Todos los Mensajeros", "Todo el Personal de Oficina"])
         with tab_mensajeros:
             df_mensajeros = fetch_all_messengers()
@@ -264,11 +264,11 @@ def render_admin_view():
         
         tipo_personal_actual = st.session_state.tipo_personal
         tabla_db = "mensajeros" if tipo_personal_actual == "Mensajeros" else "oficina"
-        if st.button("⬅️ Volver a seleccionar tipo"): st.session_state.tipo_personal = None; st.session_state.editing_id = None; st.rerun()
+        if st.button("⬅️ Volver a selección"): st.session_state.tipo_personal = None; st.session_state.editing_id = None; st.rerun()
 
         # FORMULARIO EDICIÓN
         if st.session_state.editing_id:
-            st.title(f"✏️ Editando {tipo_personal_actual}")
+            st.markdown(f'<p class="main-header">✏️ Edición: {tipo_personal_actual}</p>', unsafe_allow_html=True)
             record = fetch_single_record(tabla_db, st.session_state.editing_id)
             
             with st.container(border=True):
@@ -362,7 +362,7 @@ def render_admin_view():
         
         # LISTADO Y ALTA
         else:
-            st.title(f"Gestión de {tipo_personal_actual}: {delegacion_actual}")
+            st.markdown(f'<p class="main-header">🚚 Gestión: {tipo_personal_actual}</p>', unsafe_allow_html=True)
             if st.session_state.show_add_form:
                 with st.container(border=True):
                     st.subheader("📝 Nuevo Personal")
@@ -500,22 +500,14 @@ def render_admin_view():
                     st.download_button(label="📥 Exportar a Excel", data=output.getvalue(), file_name=f"personal_{delegacion_actual}.xlsx")
 
 # --- EJECUCIÓN ---
-apply_custom_styles()
-
 if "user_info" not in st.session_state:
-    if os.path.exists("assets/banner.png"):
-        st.image("assets/banner.png", use_container_width=True)
     render_login_form()
 else:
+    apply_custom_styles(show_sidebar=True)
+    render_sidebar()
+
     role = st.session_state.user_info.get("role", "Lector")
     deleg = st.session_state.user_info.get("delegacion")
-    st.sidebar.success(f"Sesión: {st.session_state.user_info.get('email')}")
-    st.sidebar.info(f"Rol: **{role}**")
-    if deleg: st.sidebar.write(f"Delegación: **{deleg}**")
-    if st.sidebar.button("Cerrar Sesión", use_container_width=True): logout()
-
-    if os.path.exists("assets/banner.png"):
-        st.image("assets/banner.png", use_container_width=True)
 
     if role == "Lector" and deleg: render_lector_view(deleg)
     elif role in ["Admin", "Editor"]: render_admin_view()

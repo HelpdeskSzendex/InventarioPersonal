@@ -2,15 +2,17 @@
 import streamlit as st
 import pandas as pd
 from utils.db import get_supabase
-from utils.auth import check_role
+from utils.auth import check_role, render_sidebar
 from utils.styles import apply_custom_styles
 
 st.set_page_config(page_title="Registro de Altas", page_icon="➕", layout="wide")
 apply_custom_styles()
-st.markdown('<p class="main-header">➕ Registro Histórico de Altas</p>', unsafe_allow_html=True)
+render_sidebar()
 
 # --- COMPROBACIÓN DE ROL ---
 check_role(["Admin"])
+
+st.markdown('<p class="main-header">➕ Registro Histórico de Altas</p>', unsafe_allow_html=True)
 
 # --- FUNCIÓN PARA OBTENER DATOS ---
 @st.cache_data(ttl=60)

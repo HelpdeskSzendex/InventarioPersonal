@@ -1,15 +1,17 @@
 # pages/Admin.py
 import streamlit as st
 from utils.db import get_supabase_admin
-from utils.auth import check_role
+from utils.auth import check_role, render_sidebar
 from utils.styles import apply_custom_styles
 
 st.set_page_config(page_title="Panel de Administración", page_icon="🔑", layout="wide")
 apply_custom_styles()
-st.markdown('<p class="main-header">🔑 Panel de Administración de Usuarios</p>', unsafe_allow_html=True)
+render_sidebar()
 
 # --- COMPROBACIÓN DE ROL ---
 check_role(["Admin"])
+
+st.markdown('<p class="main-header">🔑 Panel de Administración de Usuarios</p>', unsafe_allow_html=True)
 
 supabase_admin = get_supabase_admin()
 
