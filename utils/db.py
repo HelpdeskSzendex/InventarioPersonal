@@ -6,8 +6,7 @@ from datetime import date
 import os
 import re
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# UPLOAD_DIR = "uploads"  # Redundante con Supabase Storage
 
 # --- CONSTANTES ---
 DELEGACIONES = ['Granollers', 'Sabadell', 'Zona Franca', 'Manresa', 'Girona', 'Vilafranca', 'Sanitario']
@@ -45,80 +44,114 @@ def get_supabase_admin():
 
 @st.cache_data(ttl=300)
 def fetch_data(table, delegacion):
-    supabase = get_supabase()
-    return pd.DataFrame(supabase.table(table).select("*").eq('delegacion', delegacion).eq('estado', 'Activo').order('nombre_apellido').execute().data)
+    try:
+        supabase = get_supabase()
+        res = supabase.table(table).select("*").eq('delegacion', delegacion).eq('estado', 'Activo').order('nombre_apellido').execute()
+        return pd.DataFrame(res.data)
+    except Exception as e:
+        st.error(f"Error al cargar datos de {table}: {e}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=300)
 def fetch_all_messengers():
-    supabase = get_supabase()
-    return pd.DataFrame(supabase.table('mensajeros').select("*, delegacion").eq('estado', 'Activo').order('nombre_apellido').execute().data)
+    try:
+        supabase = get_supabase()
+        res = supabase.table('mensajeros').select("*, delegacion").eq('estado', 'Activo').order('nombre_apellido').execute()
+        return pd.DataFrame(res.data)
+    except Exception as e:
+        st.error(f"Error al cargar mensajeros: {e}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=300)
 def fetch_all_office_staff():
-    supabase = get_supabase()
-    return pd.DataFrame(supabase.table('oficina').select("*, delegacion").eq('estado', 'Activo').order('nombre_apellido').execute().data)
+    try:
+        supabase = get_supabase()
+        res = supabase.table('oficina').select("*, delegacion").eq('estado', 'Activo').order('nombre_apellido').execute()
+        return pd.DataFrame(res.data)
+    except Exception as e:
+        st.error(f"Error al cargar personal de oficina: {e}")
+        return pd.DataFrame()
 
 def fetch_single_record(table_name, record_id):
-    supabase = get_supabase()
-    return supabase.table(table_name).select("*").eq('id', int(record_id)).single().execute().data
+    try:
+        supabase = get_supabase()
+        return supabase.table(table_name).select("*").eq('id', int(record_id)).single().execute().data
+    except Exception as e:
+        st.error(f"Error al cargar registro {record_id}: {e}")
+        return {}
 
 def update_record(table, record_id, data, user_email=None, delegacion=None):
-    supabase = get_supabase()
+    try:
+        supabase = get_supabase()
 
-    # Obtener estado previo para el log
-    old_data = {}
-    if user_email:
-        try:
-            old_data = supabase.table(table).select("*").eq('id', record_id).single().execute().data
-        except: pass
+        # Obtener estado previo para el log
+        old_data = {}
+        if user_email:
+            try:
+                old_data = supabase.table(table).select("*").eq('id', record_id).single().execute().data
+            except: pass
 
-    res = supabase.table(table).update(data).eq('id', record_id).execute()
+        res = supabase.table(table).update(data).eq('id', record_id).execute()
 
-    if user_email and old_data:
-        diffs = []
-        for k, v in data.items():
-            old_v = old_data.get(k)
-            if str(old_v) != str(v):
-                diffs.append(f"{k}: [{old_v}] -> [{v}]")
-        if diffs:
-            log_event(user_email, "EDICIÓN", f"Editó a '{old_data.get('nombre_apellido')}'. Cambios: {', '.join(diffs)}", delegacion)
+        if user_email and old_data:
+            diffs = []
+            for k, v in data.items():
+                old_v = old_data.get(k)
+                if str(old_v) != str(v):
+                    diffs.append(f"{k}: [{old_v}] -> [{v}]")
+            if diffs:
+                log_event(user_email, "EDICIÓN", f"Editó a '{old_data.get('nombre_apellido')}'. Cambios: {', '.join(diffs)}", delegacion)
 
-    st.cache_data.clear()
-    return res
+        st.cache_data.clear()
+        return res
+    except Exception as e:
+        st.error(f"Error al actualizar registro: {e}")
+        return None
 
 def add_record_and_get_id(table, data, user_email, delegacion_actual):
-    supabase = get_supabase()
-    response = supabase.table(table).insert(data, returning="representation").execute()
-    if response.data:
-        new_id = response.data[0]['id']
-        # Log detallado de los campos iniciales
-        detalles = ", ".join([f"{k}: {v}" for k, v in data.items() if v])
-        log_event(user_email, "ALTA", f"Creó a '{data['nombre_apellido']}' en '{table}'. Datos: {detalles}", delegacion_actual)
-        st.cache_data.clear()
-        return new_id
-    return None
+    try:
+        supabase = get_supabase()
+        response = supabase.table(table).insert(data, returning="representation").execute()
+        if response.data:
+            new_id = response.data[0]['id']
+            # Log detallado de los campos iniciales
+            detalles = ", ".join([f"{k}: {v}" for k, v in data.items() if v])
+            log_event(user_email, "ALTA", f"Creó a '{data['nombre_apellido']}' en '{table}'. Datos: {detalles}", delegacion_actual)
+            st.cache_data.clear()
+            return new_id
+        return None
+    except Exception as e:
+        st.error(f"Error al añadir personal: {e}")
+        return None
 
 def dar_de_baja(table, record_id, nombre, user_email, delegacion_actual, motivo):
-    supabase = get_supabase()
-    supabase.table(table).update({"estado": "Baja", "fecha_baja": date.today().isoformat()}).eq('id', record_id).execute()
-    descripcion_log = f"Dio de baja a '{nombre}' (ID: {record_id}) de la tabla '{table}'."
-    log_event(user_email, "BAJA", descripcion_log, delegacion_actual, motivo=motivo)
-    st.cache_data.clear()
+    try:
+        supabase = get_supabase()
+        supabase.table(table).update({"estado": "Baja", "fecha_baja": date.today().isoformat()}).eq('id', record_id).execute()
+        descripcion_log = f"Dio de baja a '{nombre}' (ID: {record_id}) de la tabla '{table}'."
+        log_event(user_email, "BAJA", descripcion_log, delegacion_actual, motivo=motivo)
+        st.cache_data.clear()
+    except Exception as e:
+        st.error(f"Error al tramitar baja: {e}")
 
 def update_file_path(table, record_id, column_name, filename):
-    supabase = get_supabase()
-    # Si filename es None o lista vacía, guardamos null para limpiar
-    val = filename if filename and filename != '[]' else None
-    res = supabase.table(table).update({column_name: val}).eq('id', record_id).execute()
-    st.cache_data.clear()
-    return res
+    try:
+        supabase = get_supabase()
+        # Si filename es None o lista vacía, guardamos null para limpiar
+        val = filename if filename and filename != '[]' else None
+        res = supabase.table(table).update({column_name: val}).eq('id', record_id).execute()
+        st.cache_data.clear()
+        return res
+    except Exception as e:
+        st.error(f"Error al actualizar ruta de archivo: {e}")
+        return None
 
 # --- STORAGE ---
 
 def upload_file_to_storage(file_bytes, filename, bucket="documentos"):
     """Sube un archivo a Supabase Storage."""
-    supabase = get_supabase()
     try:
+        supabase = get_supabase()
         # Intentar subir el archivo
         supabase.storage.from_(bucket).upload(
             path=filename,
@@ -132,8 +165,8 @@ def upload_file_to_storage(file_bytes, filename, bucket="documentos"):
 
 def get_file_download_url(filename, bucket="documentos"):
     """Obtiene la URL de descarga o pública de un archivo."""
-    supabase = get_supabase()
     try:
+        supabase = get_supabase()
         # En Supabase se puede obtener una URL pública si el bucket es público
         # o una URL firmada. Usaremos create_signed_url para mayor seguridad.
         res = supabase.storage.from_(bucket).create_signed_url(filename, expires_in=3600)
@@ -144,16 +177,17 @@ def get_file_download_url(filename, bucket="documentos"):
 
 def delete_file_from_storage(filename, bucket="documentos"):
     """Elimina un archivo del storage."""
-    supabase = get_supabase()
     try:
+        supabase = get_supabase()
         supabase.storage.from_(bucket).remove([filename])
         return True
-    except:
+    except Exception as e:
+        print(f"Error eliminando archivo: {e}")
         return False
 
 def log_event(usuario_email, accion, descripcion, delegacion, motivo=None):
-    supabase = get_supabase()
     try:
+        supabase = get_supabase()
         supabase.table('log_eventos').insert({
             "usuario_email": usuario_email,
             "accion": accion,
@@ -171,7 +205,8 @@ def validate_email(email):
     """Valida el formato de un email."""
     if not email:
         return True  # Opcional en algunos casos, se valida si existe
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    # Regex más estricta para evitar dobles puntos y formatos extraños
+    pattern = r'^[a-zA-Z0-9._%+-]+@([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
 def validate_phone(phone):
@@ -203,8 +238,8 @@ def get_status_color(expiry_date_str):
 @st.cache_data(ttl=300)
 def get_estado_licencias_total():
     """Calcula el total de licencias usadas sumando los elementos de las listas."""
-    supabase = get_supabase()
     try:
+        supabase = get_supabase()
         response = supabase.table('mensajeros').select('codigo_dl').eq('estado', 'Activo').execute()
         data = response.data
         usadas = 0

@@ -13,7 +13,7 @@ from utils.db import (
     validate_email, validate_phone,
     upload_file_to_storage, get_file_download_url, get_status_color
 )
-from utils.auth import render_login_form, logout, render_sidebar
+from utils.auth import render_login_form, logout, render_sidebar, check_role
 from utils.styles import apply_custom_styles
 
 # --- CONFIGURACIÓN ---
@@ -93,9 +93,9 @@ def render_lector_view(user_delegacion):
         st.info("No hay personal para mostrar en esta categoría.")
     else:
         for _, row in df.iterrows():
-            with st.container():
+            with st.container(border=True):
                 st.markdown(f"""
-                    <div class="person-card">
+                    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
                         <h3 style="margin:0; color:#1e3a8a;">{row['nombre_apellido']}</h3>
                     </div>
                 """, unsafe_allow_html=True)
@@ -370,21 +370,22 @@ def render_admin_view():
                             st.error("Formato de móvil inválido.")
                             st.stop()
 
-                    update_record(tabla_db, st.session_state.editing_id, data,
-                                  user_email=st.session_state.user_info['email'],
-                                  delegacion=delegacion_actual)
-                    if uploaded_files:
-                        current_list = doc_list.copy()
-                        for up_file in uploaded_files:
-                            filename = f"{st.session_state.editing_id}_{up_file.name}"
-                            if upload_file_to_storage(up_file.getbuffer(), filename):
-                                current_list.append(filename)
-                        update_file_path(tabla_db, st.session_state.editing_id, "documento_path", json.dumps(current_list))
-                    if tabla_db == "mensajeros" and foto_vehiculo:
-                        filename = f"vehiculo_{st.session_state.editing_id}_{foto_vehiculo.name}"
-                        if upload_file_to_storage(foto_vehiculo.getbuffer(), filename):
-                            update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", filename)
-                    st.toast("¡Registro actualizado correctamente!", icon="✅")
+                    res = update_record(tabla_db, st.session_state.editing_id, data,
+                                        user_email=st.session_state.user_info['email'],
+                                        delegacion=delegacion_actual)
+                    if res:
+                        if uploaded_files:
+                            current_list = doc_list.copy()
+                            for up_file in uploaded_files:
+                                filename = f"{st.session_state.editing_id}_{up_file.name}"
+                                if upload_file_to_storage(up_file.getbuffer(), filename):
+                                    current_list.append(filename)
+                            update_file_path(tabla_db, st.session_state.editing_id, "documento_path", json.dumps(current_list))
+                        if tabla_db == "mensajeros" and foto_vehiculo:
+                            filename = f"vehiculo_{st.session_state.editing_id}_{foto_vehiculo.name}"
+                            if upload_file_to_storage(foto_vehiculo.getbuffer(), filename):
+                                update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", filename)
+                        st.toast("¡Registro actualizado correctamente!", icon="✅")
                     if f"temp_license_list_edit" in st.session_state: del st.session_state[f"temp_license_list_edit"]
                     st.session_state.editing_id = None; st.rerun()
                 if c2.button("Cancelar", use_container_width=True):
@@ -504,9 +505,9 @@ def render_admin_view():
             if df_activos.empty: st.info("No hay personal que coincida.")
             else:
                 for _, row in df_activos.iterrows():
-                    with st.container():
+                    with st.container(border=True):
                         st.markdown(f"""
-                            <div class="person-card">
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
                                 <h3 style="margin:0; color:#1e3a8a;">{row['nombre_apellido']}</h3>
                             </div>
                         """, unsafe_allow_html=True)
@@ -556,9 +557,18 @@ else:
     apply_custom_styles(show_sidebar=True)
     render_sidebar()
 
+    # Comprobación de seguridad básica
+    check_role(["Admin", "Editor", "Lector"])
+
     role = st.session_state.user_info.get("role", "Lector")
     deleg = st.session_state.user_info.get("delegacion")
 
-    if role == "Lector" and deleg: render_lector_view(deleg)
-    elif role in ["Admin", "Editor"]: render_admin_view()
-    else: st.warning("No tienes permisos suficientes.")
+    if role == "Lector":
+        if deleg:
+            render_lector_view(deleg)
+        else:
+            st.warning("Tu usuario no tiene una delegación asignada. Contacta con el administrador.")
+    elif role in ["Admin", "Editor"]:
+        render_admin_view()
+    else:
+        st.warning("No tienes permisos suficientes para ver este contenido.")
