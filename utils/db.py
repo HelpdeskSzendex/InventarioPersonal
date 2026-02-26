@@ -4,6 +4,7 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import date
 import os
+import re
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -105,6 +106,24 @@ def log_event(usuario_email, accion, descripcion, delegacion, motivo=None):
         st.cache_data.clear()
     except Exception as e:
         print(f"Error al registrar evento de auditoría: {e}")
+
+# --- VALIDACIONES ---
+
+def validate_email(email):
+    """Valida el formato de un email."""
+    if not email:
+        return True  # Opcional en algunos casos, se valida si existe
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_phone(phone):
+    """Valida el formato de un teléfono español (9 dígitos, opcionalmente con +34)."""
+    if not phone:
+        return True
+    # Eliminar espacios y guiones
+    clean_phone = re.sub(r'[\s-]', '', phone)
+    pattern = r'^(\+34|34)?[6789]\d{8}$'
+    return re.match(pattern, clean_phone) is not None
 
 @st.cache_data(ttl=300)
 def get_estado_licencias_total():

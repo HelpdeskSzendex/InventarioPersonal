@@ -33,11 +33,38 @@ if not df_mensajeros.empty and 'ADR' in df_mensajeros.columns:
     total_adr = df_mensajeros[df_mensajeros['ADR'] == True].shape[0]
 
 # --- 1. MÉTRICAS PRINCIPALES ---
+# Cálculos adicionales
+total_mensajeros = len(df_mensajeros)
+total_oficina = len(df_oficina)
+total_plantilla = total_mensajeros + total_oficina
+
+# Cumplimiento ADR
+adr_rate = (total_adr / total_mensajeros * 100) if total_mensajeros > 0 else 0
+
+# Promedio mensajeros por delegación (asumiendo delegaciones activas en los datos)
+num_delegaciones = df_mensajeros['delegacion'].nunique() if not df_mensajeros.empty else 1
+avg_mensajeros = total_mensajeros / num_delegaciones if num_delegaciones > 0 else 0
+
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Mensajeros", f"{len(df_mensajeros)} 🚚")
-col2.metric("Total Oficina", f"{len(df_oficina)} 💼")
-col3.metric("Total Plantilla", f"{len(df_mensajeros) + len(df_oficina)} 👥")
-col4.metric("Con Certificado ADR", f"{total_adr} ☢️", help="Mensajeros activos con casilla ADR marcada")
+col1.metric("Total Mensajeros", f"{total_mensajeros} 🚚")
+col2.metric("Total Oficina", f"{total_oficina} 💼")
+col3.metric("Total Plantilla", f"{total_plantilla} 👥")
+col4.metric("Tasa ADR", f"{adr_rate:.1f}% ☢️", help="Porcentaje de mensajeros con ADR")
+
+st.markdown("---")
+# Segunda fila de métricas
+col5, col6, col7, col8 = st.columns(4)
+with col5:
+    st.metric("Promedio Mens./Delegación", f"{avg_mensajeros:.1f}")
+with col6:
+    total_rotulados = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Si'].shape[0] if not df_mensajeros.empty else 0
+    st.metric("Total Rotulados", f"{total_rotulados} ✅")
+with col7:
+    total_sin_rotular = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'No'].shape[0] if not df_mensajeros.empty else 0
+    st.metric("Total Sin Rotular", f"{total_sin_rotular} ❌")
+with col8:
+    total_pendientes = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Pendiente de rotular'].shape[0] if not df_mensajeros.empty else 0
+    st.metric("Total Pendientes", f"{total_pendientes} ⏳")
 
 st.markdown("---")
 

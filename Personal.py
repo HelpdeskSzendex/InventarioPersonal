@@ -9,7 +9,8 @@ from utils.db import (
     DELEGACIONES, PERFIL_OPTS, ROTULADO_OPTS, UPLOAD_DIR,
     fetch_data, fetch_all_messengers, fetch_all_office_staff,
     fetch_single_record, update_record, add_record_and_get_id,
-    dar_de_baja, update_file_path, get_estado_licencias_total
+    dar_de_baja, update_file_path, get_estado_licencias_total,
+    validate_email, validate_phone
 )
 from utils.auth import render_login_form, logout
 
@@ -189,8 +190,14 @@ def render_admin_view():
         tab_mensajeros, tab_oficina = st.tabs(["Todos los Mensajeros", "Todo el Personal de Oficina"])
         with tab_mensajeros:
             df_mensajeros = fetch_all_messengers()
-            search_query_mens = st.text_input("Buscar por nombre de mensajero", key="search_global_mens")
-            if search_query_mens: df_mensajeros = df_mensajeros[df_mensajeros["nombre_apellido"].str.contains(search_query_mens, case=False, na=False)]
+            search_query_mens = st.text_input("Buscar por nombre, delegación o ruta", key="search_global_mens", placeholder="Ej: Juan, Sabadell, Sab10")
+            if search_query_mens:
+                q = search_query_mens.lower()
+                df_mensajeros = df_mensajeros[
+                    df_mensajeros["nombre_apellido"].str.lower().str.contains(q, na=False) |
+                    df_mensajeros["delegacion"].str.lower().str.contains(q, na=False) |
+                    df_mensajeros["ruta"].str.lower().str.contains(q, na=False)
+                ]
             if df_mensajeros.empty: st.info("No hay mensajeros activos.")
             else:
                 for _, row in df_mensajeros.iterrows():
@@ -203,8 +210,14 @@ def render_admin_view():
                         col3.write(f"**Observaciones:** {row.get('observaciones','')}")
         with tab_oficina:
             df_oficina = fetch_all_office_staff()
-            search_query_ofi = st.text_input("Buscar por nombre de personal de oficina", key="search_global_ofi")
-            if search_query_ofi: df_oficina = df_oficina[df_oficina["nombre_apellido"].str.contains(search_query_ofi, case=False, na=False)]
+            search_query_ofi = st.text_input("Buscar por nombre, delegación o posición", key="search_global_ofi", placeholder="Ej: Maria, Girona, Responsable")
+            if search_query_ofi:
+                q = search_query_ofi.lower()
+                df_oficina = df_oficina[
+                    df_oficina["nombre_apellido"].str.lower().str.contains(q, na=False) |
+                    df_oficina["delegacion"].str.lower().str.contains(q, na=False) |
+                    df_oficina["posicion"].str.lower().str.contains(q, na=False)
+                ]
             if df_oficina.empty: st.info("No hay personal de oficina activo.")
             else:
                 for _, row in df_oficina.iterrows():
@@ -300,6 +313,22 @@ def render_admin_view():
                 st.markdown("---")
                 c1, c2 = st.columns([1, 6])
                 if c1.button("💾 Guardar", type="primary", use_container_width=True):
+                    # Validaciones
+                    if tabla_db == "mensajeros":
+                        if email_personal and not validate_email(email_personal):
+                            st.error("Formato de email personal inválido.")
+                            st.stop()
+                        if movil and not validate_phone(movil):
+                            st.error("Formato de móvil inválido (debe ser un número español de 9 dígitos).")
+                            st.stop()
+                    else: # Oficina
+                        if correo_electronico and not validate_email(correo_electronico):
+                            st.error("Formato de email inválido.")
+                            st.stop()
+                        if movil and not validate_phone(movil):
+                            st.error("Formato de móvil inválido.")
+                            st.stop()
+
                     update_record(tabla_db, st.session_state.editing_id, data)
                     if uploaded_files:
                         current_list = doc_list.copy()
@@ -351,6 +380,22 @@ def render_admin_view():
 
                     if s_col1.button("✅ Añadir", type="primary", use_container_width=True):
                         if nombre_apellido:
+                            # Validaciones
+                            if tabla_db == "mensajeros":
+                                if email_personal and not validate_email(email_personal):
+                                    st.error("Formato de email personal inválido.")
+                                    st.stop()
+                                if movil and not validate_phone(movil):
+                                    st.error("Formato de móvil inválido.")
+                                    st.stop()
+                            else: # Oficina
+                                if correo_electronico and not validate_email(correo_electronico):
+                                    st.error("Formato de email inválido.")
+                                    st.stop()
+                                if movil and not validate_phone(movil):
+                                    st.error("Formato de móvil inválido.")
+                                    st.stop()
+
                             data_form = {"nombre_apellido": nombre_apellido, "delegacion": delegacion_actual, "estado": "Activo"}
                             if tabla_db == "mensajeros":
                                 data_form.update({"ruta": ruta, "perfil_mensajero": perfil_mensajero, "observaciones": observaciones, "movil": movil, "vehiculo_rotulado": vehiculo_rotulado, "email_personal": email_personal, "codigo_dl": codigos_dl_final, "hace_paqueteria": hace_paqueteria, "DHL": dhl, "ADR": adr})
@@ -385,8 +430,20 @@ def render_admin_view():
 
             st.markdown("---")
             df_activos = fetch_data(tabla_db, delegacion_actual)
-            search_query = st.text_input("Buscar por nombre", key=f"search_{tabla_db}")
-            if search_query: df_activos = df_activos[df_activos["nombre_apellido"].str.contains(search_query, case=False, na=False)]
+            search_placeholder = "Buscar por nombre o ruta" if tabla_db == "mensajeros" else "Buscar por nombre o posición"
+            search_query = st.text_input(search_placeholder, key=f"search_{tabla_db}")
+            if search_query:
+                q = search_query.lower()
+                if tabla_db == "mensajeros":
+                    df_activos = df_activos[
+                        df_activos["nombre_apellido"].str.lower().str.contains(q, na=False) |
+                        df_activos["ruta"].str.lower().str.contains(q, na=False)
+                    ]
+                else:
+                    df_activos = df_activos[
+                        df_activos["nombre_apellido"].str.lower().str.contains(q, na=False) |
+                        df_activos["posicion"].str.lower().str.contains(q, na=False)
+                    ]
 
             if df_activos.empty: st.info("No hay personal que coincida.")
             else:
