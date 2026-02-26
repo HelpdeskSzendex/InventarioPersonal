@@ -1,7 +1,0 @@
-# requirements.txt
-streamlit
-pandas
-supabase
-passlib
-bcrypt
-openpyxl

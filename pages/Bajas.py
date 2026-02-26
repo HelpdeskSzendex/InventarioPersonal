@@ -3,8 +3,8 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 
-st.set_page_config(page_title="Registro de Bajas", page_icon="📋", layout="wide")
-st.title("📋 Registro Histórico de Bajas")
+st.set_page_config(page_title="Registro de Bajas", page_icon="➖", layout="wide")
+st.title("➖ Registro Histórico de Bajas")
 
 # --- CONEXIÓN A SUPABASE ---
 @st.cache_resource
@@ -19,34 +19,44 @@ def init_supabase_client():
 supabase: Client = init_supabase_client()
 
 # --- COMPROBACIÓN DE ROL ---
-# Asegurarse de que el usuario ha iniciado sesión y tiene el rol correcto
 user_role = st.session_state.get("user_info", {}).get("role")
 if user_role != "Admin":
     st.error("No tienes permiso para acceder a esta página.")
-    st.stop() # Detiene la ejecución si no es Admin
+    st.stop()
 
 # --- FUNCIÓN PARA OBTENER DATOS ---
-@st.cache_data(ttl=300) # La caché se refresca cada 5 minutos
-def fetch_all_bajas():
-    """Obtiene y une las bajas de ambas tablas desde Supabase."""
-    
-    # 1. Obtener bajas de mensajeros
-    res_mensajeros = supabase.table("mensajeros").select("delegacion, nombre_apellido, fecha_baja").eq("estado", "Baja").execute()
-    df_mensajeros = pd.DataFrame(res_mensajeros.data).assign(tipo="Mensajero")
+@st.cache_data(ttl=60)
+def fetch_bajas():
+    """Obtiene solo los eventos de BAJA de la tabla de registros."""
+    # select(*) ya incluirá la nueva columna 'motivo'
+    response = supabase.table('log_eventos').select("*").eq('accion', 'BAJA').order("timestamp", desc=True).execute()
+    return pd.DataFrame(response.data)
 
-    # 2. Obtener bajas de oficina
-    res_oficina = supabase.table("oficina").select("delegacion, nombre_apellido, fecha_baja").eq("estado", "Baja").execute()
-    df_oficina = pd.DataFrame(res_oficina.data).assign(tipo="Oficina")
+if st.button("Refrescar Registros ♻️"):
+    st.cache_data.clear()
 
-    # 3. Unir ambos resultados y ordenar
-    df_bajas_total = pd.concat([df_mensajeros, df_oficina]).sort_values("fecha_baja", ascending=False)
-    
-    return df_bajas_total
-
-# --- MOSTRAR LA TABLA ---
-df_bajas = fetch_all_bajas()
+df_bajas = fetch_bajas()
 
 if df_bajas.empty:
     st.info("Aún no se ha registrado ninguna baja.")
 else:
-    st.dataframe(df_bajas, use_container_width=True, hide_index=True)
+    filtro_usuario = st.text_input("Filtrar por email del usuario que realizó la baja:")
+    
+    df_filtrado = df_bajas
+    if filtro_usuario:
+        df_filtrado = df_filtrado[df_filtrado['usuario_email'].str.contains(filtro_usuario, case=False, na=False)]
+
+    st.dataframe(
+        df_filtrado,
+        column_config={
+            "id": None, # Oculta la columna ID
+            "timestamp": st.column_config.DatetimeColumn("Fecha y Hora", format="YYYY-MM-DD HH:mm"),
+            "usuario_email": "Usuario Responsable",
+            "accion": None, # Ocultamos la acción porque ya sabemos que es "BAJA"
+            "delegacion": "Delegación",
+            "descripcion": "Descripción",
+            "motivo": "Motivo de la Baja"  # --- MODIFICADO: Se añade la columna motivo ---
+        },
+        use_container_width=True,
+        hide_index=True
+    )

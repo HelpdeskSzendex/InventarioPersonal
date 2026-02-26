@@ -32,21 +32,29 @@ st.markdown("Visión general del personal activo en la empresa.")
 
 @st.cache_data(ttl=600)
 def fetch_all_data():
-    mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado").eq("estado", "Activo").execute()
+    mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado, ADR, nombre_apellido").eq("estado", "Activo").execute()
     oficina_res = supabase.table("oficina").select("delegacion").eq("estado", "Activo").execute()
     return pd.DataFrame(mensajeros_res.data), pd.DataFrame(oficina_res.data)
 
 df_mensajeros, df_oficina = fetch_all_data()
 
-# --- MÉTRICAS PRINCIPALES ---
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Mensajeros Activos", f"{len(df_mensajeros)} 🚚")
-col2.metric("Total Personal de Oficina", f"{len(df_oficina)} 💼")
-col3.metric("Total Empleados", f"{len(df_mensajeros) + len(df_oficina)} 👥")
+# Calcular Total ADR
+total_adr = 0
+if not df_mensajeros.empty and 'ADR' in df_mensajeros.columns:
+    # Asegurar tipo booleano
+    df_mensajeros['ADR'] = df_mensajeros['ADR'].fillna(False).astype(bool)
+    total_adr = df_mensajeros[df_mensajeros['ADR'] == True].shape[0]
+
+# --- 1. MÉTRICAS PRINCIPALES ---
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Mensajeros", f"{len(df_mensajeros)} 🚚")
+col2.metric("Total Oficina", f"{len(df_oficina)} 💼")
+col3.metric("Total Plantilla", f"{len(df_mensajeros) + len(df_oficina)} 👥")
+col4.metric("Con Certificado ADR", f"{total_adr} ☢️", help="Mensajeros activos con casilla ADR marcada")
 
 st.markdown("---")
 
-# --- GRÁFICOS ---
+# --- 2. GRÁFICOS GENERALES ---
 col_a, col_b = st.columns(2)
 with col_a:
     st.subheader("Personal por Delegación")
@@ -62,11 +70,11 @@ with col_b:
 
 st.markdown("---") 
 
-# --- SECCIÓN DE ESTADO DE VEHÍCULOS ---
+# --- 3. SECCIÓN DE ESTADO DE VEHÍCULOS ---
 st.subheader("🚚 Estado de Rotulación de Vehículos")
 
 if not df_mensajeros.empty:
-    # 1. Contadores totales
+    # Contadores totales
     conteo_estados = df_mensajeros['vehiculo_rotulado'].value_counts()
     total_rotulados = conteo_estados.get('Si', 0)
     total_sin_rotular = conteo_estados.get('No', 0)
@@ -77,7 +85,7 @@ if not df_mensajeros.empty:
     col_r2.metric("❌ Total Sin Rotular", total_sin_rotular)
     col_r3.metric("⏳ Total Pendientes", total_pendientes, help="Vehículos cuya rotulación ha sido aceptada pero aún no se ha completado.")
 
-    # 2. Gráfica detallada por delegación
+    # Gráfica detallada por delegación
     st.markdown("#### Detalle de Rotulados por Delegación")
     df_rotulados = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Si']
     if not df_rotulados.empty:
@@ -87,3 +95,24 @@ if not df_mensajeros.empty:
         st.info("No hay vehículos registrados como 'Si' rotulados para mostrar en la gráfica.")
 else:
     st.info("No hay datos de mensajeros para mostrar el estado de los vehículos.")
+
+st.markdown("---")
+
+# --- 4. NUEVA SECCIÓN: LISTADO DE PERSONAS CON ADR (MOVIDO AQUÍ ABAJO) ---
+if total_adr > 0:
+    st.subheader("☢️ Listado de Personal con ADR")
+    
+    # Filtramos solo los que tienen ADR
+    df_adr_list = df_mensajeros[df_mensajeros['ADR'] == True][['nombre_apellido', 'delegacion', 'perfil_mensajero']]
+    
+    # Mostramos la tabla limpia
+    st.dataframe(
+        df_adr_list,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "nombre_apellido": "Nombre del Mensajero",
+            "delegacion": "Delegación",
+            "perfil_mensajero": "Perfil"
+        }
+    )

@@ -1,0 +1,4 @@
+helpdesk@szendex.com
+admin
+
+Luego ya dentro de este usuario puedes ir a admin, y ver los usuario crear o eliminar
