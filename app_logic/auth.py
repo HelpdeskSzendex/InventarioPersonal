@@ -1,8 +1,8 @@
-# utils/auth.py
+# app_logic/auth.py
 import streamlit as st
 import os
-from utils.db import get_supabase
-from utils.styles import apply_custom_styles
+from app_logic.db import get_supabase
+from app_logic.styles import apply_custom_styles
 
 def check_role(roles_permitidos: list):
     """

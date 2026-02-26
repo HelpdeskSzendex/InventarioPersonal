@@ -1,4 +1,4 @@
-# utils/styles.py
+# app_logic/styles.py
 import streamlit as st
 
 def apply_custom_styles(show_sidebar=True):

@@ -1,9 +1,9 @@
 # pages/1_Dashboard.py
 import streamlit as st
 import pandas as pd
-from utils.db import get_supabase
-from utils.auth import check_role, render_sidebar
-from utils.styles import apply_custom_styles
+from app_logic.db import get_supabase
+from app_logic.auth import check_role, render_sidebar
+from app_logic.styles import apply_custom_styles
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 apply_custom_styles()

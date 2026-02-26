@@ -1,11 +1,36 @@
 # Personal.py
+import sys
+import subprocess
+
+# --- COMPROBACIÓN DE DEPENDENCIAS ---
+REQUIRED_MODULES = ["supabase", "pandas", "streamlit", "openpyxl"]
+missing_modules = []
+
+for module in REQUIRED_MODULES:
+    try:
+        __import__(module)
+    except ImportError:
+        missing_modules.append(module)
+
+if missing_modules:
+    try:
+        import streamlit as st
+        st.error(f"⚠️ Error de Dependencias: Faltan los siguientes módulos: {', '.join(missing_modules)}")
+        st.info("Para solucionar este problema, ejecuta el siguiente comando en tu terminal:")
+        st.code(f"pip install {' '.join(missing_modules)}")
+        st.stop()
+    except ImportError:
+        print(f"ERROR: Faltan dependencias criticas: {', '.join(missing_modules)}")
+        print(f"Ejecuta: pip install {' '.join(missing_modules)}")
+        sys.exit(1)
+
 import streamlit as st
 import pandas as pd
 import os
 import io
 import json
 from datetime import date
-from utils.db import (
+from app_logic.db import (
     DELEGACIONES, PERFIL_OPTS, ROTULADO_OPTS,
     fetch_data, fetch_all_messengers, fetch_all_office_staff,
     fetch_single_record, update_record, add_record_and_get_id,
@@ -13,8 +38,8 @@ from utils.db import (
     validate_email, validate_phone,
     upload_file_to_storage, get_file_download_url, get_status_color
 )
-from utils.auth import render_login_form, logout, render_sidebar, check_role
-from utils.styles import apply_custom_styles
+from app_logic.auth import render_login_form, logout, render_sidebar, check_role
+from app_logic.styles import apply_custom_styles
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Personal", page_icon="👥", layout="wide")

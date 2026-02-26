@@ -1,4 +1,4 @@
-# utils/db.py
+# app_logic/db.py
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
@@ -164,13 +164,14 @@ def upload_file_to_storage(file_bytes, filename, bucket="documentos"):
         return False
 
 def get_file_download_url(filename, bucket="documentos"):
-    """Obtiene la URL de descarga o pública de un archivo."""
+    """Obtiene la URL de descarga firmada de un archivo."""
     try:
         supabase = get_supabase()
-        # En Supabase se puede obtener una URL pública si el bucket es público
-        # o una URL firmada. Usaremos create_signed_url para mayor seguridad.
+        # create_signed_url en versiones recientes de supabase-py devuelve el string directamente
         res = supabase.storage.from_(bucket).create_signed_url(filename, expires_in=3600)
-        return res.get('signedURL')
+        if isinstance(res, dict):
+            return res.get('signedURL')
+        return res # Es el URL directamente
     except Exception as e:
         print(f"Error obteniendo URL: {e}")
         return None

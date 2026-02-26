@@ -1,8 +1,8 @@
 # pages/Admin.py
 import streamlit as st
-from utils.db import get_supabase_admin
-from utils.auth import check_role, render_sidebar
-from utils.styles import apply_custom_styles
+from app_logic.db import get_supabase_admin
+from app_logic.auth import check_role, render_sidebar
+from app_logic.styles import apply_custom_styles
 
 st.set_page_config(page_title="Panel de Administración", page_icon="🔑", layout="wide")
 apply_custom_styles()
