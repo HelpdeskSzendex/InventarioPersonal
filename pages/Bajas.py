@@ -3,9 +3,11 @@ import streamlit as st
 import pandas as pd
 from utils.db import get_supabase
 from utils.auth import check_role
+from utils.styles import apply_custom_styles
 
 st.set_page_config(page_title="Registro de Bajas", page_icon="➖", layout="wide")
-st.title("➖ Registro Histórico de Bajas")
+apply_custom_styles()
+st.markdown('<p class="main-header">➖ Registro Histórico de Bajas</p>', unsafe_allow_html=True)
 
 # --- COMPROBACIÓN DE ROL ---
 check_role(["Admin"])

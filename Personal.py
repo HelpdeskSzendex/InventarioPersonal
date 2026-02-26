@@ -13,6 +13,7 @@ from utils.db import (
     validate_email, validate_phone
 )
 from utils.auth import render_login_form, logout
+from utils.styles import apply_custom_styles
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Personal", page_icon="👥", layout="wide")
@@ -83,8 +84,7 @@ def render_lector_view(user_delegacion):
     
     tabla = "mensajeros" if tipo == "Mensajeros" else "oficina"
         
-    st.markdown("---")
-    st.subheader("Listado de Personal Activo")
+    st.markdown('<p class="sub-header">Listado de Personal Activo</p>', unsafe_allow_html=True)
 
     with st.spinner("Cargando personal..."):
         df = fetch_data(tabla, user_delegacion)
@@ -93,8 +93,12 @@ def render_lector_view(user_delegacion):
         st.info("No hay personal para mostrar en esta categoría.")
     else:
         for _, row in df.iterrows():
-            with st.container(border=True):
-                st.markdown(f"**{row['nombre_apellido']}**")
+            with st.container():
+                st.markdown(f"""
+                    <div class="person-card">
+                        <h3 style="margin:0; color:#1e3a8a;">{row['nombre_apellido']}</h3>
+                    </div>
+                """, unsafe_allow_html=True)
                 
                 if tabla == "mensajeros":
                     col1, col2, col3 = st.columns(3)
@@ -174,7 +178,7 @@ def render_admin_view():
         st.session_state.editing_id = None
 
     if st.session_state.delegacion_seleccionada is None:
-        st.title("🗺️ Selector de Delegaciones")
+        st.markdown('<p class="main-header">🗺️ Selector de Delegaciones</p>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3); columnas = [col1, col2, col3] * 3
         for i, delegacion in enumerate(DELEGACIONES):
             if i < len(columnas):
@@ -201,8 +205,12 @@ def render_admin_view():
             if df_mensajeros.empty: st.info("No hay mensajeros activos.")
             else:
                 for _, row in df_mensajeros.iterrows():
-                    with st.container(border=True):
-                        st.markdown(f"**{row['nombre_apellido']}** (`{row.get('delegacion', 'N/A')}`)")
+                    with st.container():
+                        st.markdown(f"""
+                            <div class="person-card">
+                                <h3 style="margin:0; color:#1e3a8a;">{row['nombre_apellido']} <span style="font-size:0.8rem; color:#6b7280;">({row.get('delegacion', 'N/A')})</span></h3>
+                            </div>
+                        """, unsafe_allow_html=True)
                         col1, col2, col3 = st.columns(3)
                         col1.write(f"**Ruta:** *{row.get('ruta','')}*")
                         col1.write(f"**Móvil:** {row.get('movil','')}")
@@ -221,8 +229,12 @@ def render_admin_view():
             if df_oficina.empty: st.info("No hay personal de oficina activo.")
             else:
                 for _, row in df_oficina.iterrows():
-                    with st.container(border=True):
-                        st.markdown(f"**{row['nombre_apellido']}** (`{row.get('delegacion', 'N/A')}`)")
+                    with st.container():
+                        st.markdown(f"""
+                            <div class="person-card">
+                                <h3 style="margin:0; color:#1e3a8a;">{row['nombre_apellido']} <span style="font-size:0.8rem; color:#6b7280;">({row.get('delegacion', 'N/A')})</span></h3>
+                            </div>
+                        """, unsafe_allow_html=True)
                         col1, col2 = st.columns(2)
                         col1.write(f"**Posición:** {row.get('posicion','')}")
                         col1.write(f"**Email:** *{row.get('correo_electronico','')}*")
@@ -448,9 +460,13 @@ def render_admin_view():
             if df_activos.empty: st.info("No hay personal que coincida.")
             else:
                 for _, row in df_activos.iterrows():
-                    with st.container(border=True):
+                    with st.container():
+                        st.markdown(f"""
+                            <div class="person-card">
+                                <h3 style="margin:0; color:#1e3a8a;">{row['nombre_apellido']}</h3>
+                            </div>
+                        """, unsafe_allow_html=True)
                         header_cols = st.columns([5, 2])
-                        header_cols[0].markdown(f"**{row['nombre_apellido']}**")
                         with header_cols[1]:
                             action_cols = st.columns(2)
                             if st.session_state.user_info.get("role") in ['Admin', 'Editor']:
@@ -484,7 +500,11 @@ def render_admin_view():
                     st.download_button(label="📥 Exportar a Excel", data=output.getvalue(), file_name=f"personal_{delegacion_actual}.xlsx")
 
 # --- EJECUCIÓN ---
+apply_custom_styles()
+
 if "user_info" not in st.session_state:
+    if os.path.exists("assets/banner.png"):
+        st.image("assets/banner.png", use_container_width=True)
     render_login_form()
 else:
     role = st.session_state.user_info.get("role", "Lector")
@@ -492,7 +512,10 @@ else:
     st.sidebar.success(f"Sesión: {st.session_state.user_info.get('email')}")
     st.sidebar.info(f"Rol: **{role}**")
     if deleg: st.sidebar.write(f"Delegación: **{deleg}**")
-    if st.sidebar.button("Cerrar Sesión"): logout()
+    if st.sidebar.button("Cerrar Sesión", use_container_width=True): logout()
+
+    if os.path.exists("assets/banner.png"):
+        st.image("assets/banner.png", use_container_width=True)
 
     if role == "Lector" and deleg: render_lector_view(deleg)
     elif role in ["Admin", "Editor"]: render_admin_view()

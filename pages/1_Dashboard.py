@@ -3,14 +3,17 @@ import streamlit as st
 import pandas as pd
 from utils.db import get_supabase
 from utils.auth import check_role
+from utils.styles import apply_custom_styles
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
-st.title("📊 Dashboard de Personal")
+apply_custom_styles()
+
+st.markdown('<p class="main-header">📊 Dashboard de Personal</p>', unsafe_allow_html=True)
 
 # --- COMPROBACIÓN DE ROL ---
 check_role(["Admin"])
 
-if st.button("Refrescar Datos ♻️"):
+if st.button("Refrescar Datos ♻️", use_container_width=True):
     st.cache_data.clear()
     st.toast("Datos actualizados.", icon="✅")
 
@@ -33,6 +36,8 @@ if not df_mensajeros.empty and 'ADR' in df_mensajeros.columns:
     total_adr = df_mensajeros[df_mensajeros['ADR'] == True].shape[0]
 
 # --- 1. MÉTRICAS PRINCIPALES ---
+st.markdown('<p class="sub-header">Métricas Principales</p>', unsafe_allow_html=True)
+
 # Cálculos adicionales
 total_mensajeros = len(df_mensajeros)
 total_oficina = len(df_oficina)
@@ -69,15 +74,17 @@ with col8:
 st.markdown("---")
 
 # --- 2. GRÁFICOS GENERALES ---
+st.markdown('<p class="sub-header">Distribución de Personal</p>', unsafe_allow_html=True)
+
 col_a, col_b = st.columns(2)
 with col_a:
-    st.subheader("Personal por Delegación")
+    st.markdown("**Personal por Delegación**")
     if not df_mensajeros.empty or not df_oficina.empty:
         personal_total = pd.concat([df_mensajeros[['delegacion']], df_oficina[['delegacion']]])
         conteo_delegacion = personal_total['delegacion'].value_counts()
         st.bar_chart(conteo_delegacion)
 with col_b:
-    st.subheader("Perfiles de Mensajeros")
+    st.markdown("**Perfiles de Mensajeros**")
     if not df_mensajeros.empty:
         conteo_perfil = df_mensajeros['perfil_mensajero'].value_counts()
         st.bar_chart(conteo_perfil)
@@ -85,7 +92,7 @@ with col_b:
 st.markdown("---") 
 
 # --- 3. SECCIÓN DE ESTADO DE VEHÍCULOS ---
-st.subheader("🚚 Estado de Rotulación de Vehículos")
+st.markdown('<p class="sub-header">🚚 Estado de Rotulación de Vehículos</p>', unsafe_allow_html=True)
 
 if not df_mensajeros.empty:
     conteo_estados = df_mensajeros['vehiculo_rotulado'].value_counts()
@@ -98,12 +105,10 @@ if not df_mensajeros.empty:
     col_r2.metric("❌ Total Sin Rotular", total_sin_rotular)
     col_r3.metric("⏳ Total Pendientes", total_pendientes)
 
-    st.markdown("#### Detalle de Rotulados por Delegación")
-    df_rotulados = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Si']
-    if not df_rotulados.empty:
-        st.bar_chart(df_rotulados['delegacion'].value_counts())
-    else:
-        st.info("No hay vehículos rotulados para mostrar.")
+    st.markdown("**Estado de Rotulación por Delegación**")
+    # Crear un DataFrame para la gráfica agrupada
+    df_rot_deleg = df_mensajeros.groupby(['delegacion', 'vehiculo_rotulado']).size().reset_index(name='count')
+    st.bar_chart(df_rot_deleg, x='delegacion', y='count', color='vehiculo_rotulado', stack=False)
 else:
     st.info("No hay datos de mensajeros.")
 
@@ -111,7 +116,7 @@ st.markdown("---")
 
 # --- 4. LISTADO DE PERSONAS CON ADR ---
 if total_adr > 0:
-    st.subheader("☢️ Listado de Personal con ADR")
+    st.markdown('<p class="sub-header">☢️ Listado de Personal con ADR</p>', unsafe_allow_html=True)
     df_adr_list = df_mensajeros[df_mensajeros['ADR'] == True][['nombre_apellido', 'delegacion', 'perfil_mensajero']]
     st.dataframe(
         df_adr_list,
