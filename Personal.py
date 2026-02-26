@@ -6,7 +6,7 @@ import io
 import json
 from datetime import date
 from utils.db import (
-    DELEGACIONES, PERFIL_OPTS, ROTULADO_OPTS, UPLOAD_DIR,
+    DELEGACIONES, PERFIL_OPTS, ROTULADO_OPTS,
     fetch_data, fetch_all_messengers, fetch_all_office_staff,
     fetch_single_record, update_record, add_record_and_get_id,
     dar_de_baja, update_file_path, get_estado_licencias_total,

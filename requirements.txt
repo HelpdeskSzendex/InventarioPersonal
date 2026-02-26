@@ -1,6 +1,7 @@
-streamlit
-pandas
-supabase
-passlib
-bcrypt
-openpyxl
+streamlit>=1.30.0
+pandas>=2.0.0
+supabase>=2.3.0
+passlib>=1.7.4
+bcrypt>=4.1.0
+openpyxl>=3.1.0
+python-dotenv>=1.0.0
