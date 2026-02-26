@@ -23,7 +23,7 @@ st.markdown("Visión general del personal activo en la empresa.")
 @st.cache_data(ttl=600)
 def fetch_dashboard_data():
     supabase = get_supabase()
-    mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado, ADR, nombre_apellido").eq("estado", "Activo").execute()
+    mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado, ADR, nombre_apellido, fecha_caducidad_adr, fecha_caducidad_licencia").eq("estado", "Activo").execute()
     oficina_res = supabase.table("oficina").select("delegacion").eq("estado", "Activo").execute()
     return pd.DataFrame(mensajeros_res.data), pd.DataFrame(oficina_res.data)
 
@@ -115,7 +115,50 @@ else:
 
 st.markdown("---")
 
-# --- 4. LISTADO DE PERSONAS CON ADR ---
+# --- 4. ALERTAS DE CADUCIDAD ---
+st.markdown('<p class="sub-header">⚠️ Alertas de Documentación</p>', unsafe_allow_html=True)
+
+if not df_mensajeros.empty:
+    today = pd.Timestamp.now().normalize()
+
+    # Asegurar formato fecha
+    df_mensajeros['fecha_caducidad_adr'] = pd.to_datetime(df_mensajeros['fecha_caducidad_adr'], errors='coerce')
+    df_mensajeros['fecha_caducidad_licencia'] = pd.to_datetime(df_mensajeros['fecha_caducidad_licencia'], errors='coerce')
+
+    # Filtrar caducados o próximos (<30 días)
+    caducados_adr = df_mensajeros[df_mensajeros['fecha_caducidad_adr'] < today]
+    proximos_adr = df_mensajeros[(df_mensajeros['fecha_caducidad_adr'] >= today) & (df_mensajeros['fecha_caducidad_adr'] <= today + pd.Timedelta(days=30))]
+
+    caducados_lic = df_mensajeros[df_mensajeros['fecha_caducidad_licencia'] < today]
+    proximos_lic = df_mensajeros[(df_mensajeros['fecha_caducidad_licencia'] >= today) & (df_mensajeros['fecha_caducidad_licencia'] <= today + pd.Timedelta(days=30))]
+
+    if caducados_adr.empty and proximos_adr.empty and caducados_lic.empty and proximos_lic.empty:
+        st.success("Toda la documentación está al día. ✅")
+    else:
+        col_err1, col_err2 = st.columns(2)
+        with col_err1:
+            if not caducados_adr.empty or not caducados_lic.empty:
+                st.error(f"Se han detectado {len(caducados_adr) + len(caducados_lic)} documentos CADUCADOS.")
+                if not caducados_adr.empty:
+                    st.write("**ADR Caducado:**")
+                    st.dataframe(caducados_adr[['nombre_apellido', 'delegacion', 'fecha_caducidad_adr']], hide_index=True, use_container_width=True)
+                if not caducados_lic.empty:
+                    st.write("**Licencia DL Caducada:**")
+                    st.dataframe(caducados_lic[['nombre_apellido', 'delegacion', 'fecha_caducidad_licencia']], hide_index=True, use_container_width=True)
+
+        with col_err2:
+            if not proximos_adr.empty or not proximos_lic.empty:
+                st.warning(f"Hay {len(proximos_adr) + len(proximos_lic)} documentos próximos a caducar (<30 días).")
+                if not proximos_adr.empty:
+                    st.write("**ADR por Caducar:**")
+                    st.dataframe(proximos_adr[['nombre_apellido', 'delegacion', 'fecha_caducidad_adr']], hide_index=True, use_container_width=True)
+                if not proximos_lic.empty:
+                    st.write("**Licencia DL por Caducar:**")
+                    st.dataframe(proximos_lic[['nombre_apellido', 'delegacion', 'fecha_caducidad_licencia']], hide_index=True, use_container_width=True)
+
+st.markdown("---")
+
+# --- 5. LISTADO DE PERSONAS CON ADR ---
 if total_adr > 0:
     st.markdown('<p class="sub-header">☢️ Listado de Personal con ADR</p>', unsafe_allow_html=True)
     df_adr_list = df_mensajeros[df_mensajeros['ADR'] == True][['nombre_apellido', 'delegacion', 'perfil_mensajero']]

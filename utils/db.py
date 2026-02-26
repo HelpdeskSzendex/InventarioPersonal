@@ -62,9 +62,27 @@ def fetch_single_record(table_name, record_id):
     supabase = get_supabase()
     return supabase.table(table_name).select("*").eq('id', int(record_id)).single().execute().data
 
-def update_record(table, record_id, data):
+def update_record(table, record_id, data, user_email=None, delegacion=None):
     supabase = get_supabase()
+
+    # Obtener estado previo para el log
+    old_data = {}
+    if user_email:
+        try:
+            old_data = supabase.table(table).select("*").eq('id', record_id).single().execute().data
+        except: pass
+
     res = supabase.table(table).update(data).eq('id', record_id).execute()
+
+    if user_email and old_data:
+        diffs = []
+        for k, v in data.items():
+            old_v = old_data.get(k)
+            if str(old_v) != str(v):
+                diffs.append(f"{k}: [{old_v}] -> [{v}]")
+        if diffs:
+            log_event(user_email, "EDICIÓN", f"Editó a '{old_data.get('nombre_apellido')}'. Cambios: {', '.join(diffs)}", delegacion)
+
     st.cache_data.clear()
     return res
 
@@ -73,7 +91,9 @@ def add_record_and_get_id(table, data, user_email, delegacion_actual):
     response = supabase.table(table).insert(data, returning="representation").execute()
     if response.data:
         new_id = response.data[0]['id']
-        log_event(user_email, "ALTA", f"Creó a '{data['nombre_apellido']}' en '{table}'.", delegacion_actual)
+        # Log detallado de los campos iniciales
+        detalles = ", ".join([f"{k}: {v}" for k, v in data.items() if v])
+        log_event(user_email, "ALTA", f"Creó a '{data['nombre_apellido']}' en '{table}'. Datos: {detalles}", delegacion_actual)
         st.cache_data.clear()
         return new_id
     return None
@@ -92,6 +112,44 @@ def update_file_path(table, record_id, column_name, filename):
     res = supabase.table(table).update({column_name: val}).eq('id', record_id).execute()
     st.cache_data.clear()
     return res
+
+# --- STORAGE ---
+
+def upload_file_to_storage(file_bytes, filename, bucket="documentos"):
+    """Sube un archivo a Supabase Storage."""
+    supabase = get_supabase()
+    try:
+        # Intentar subir el archivo
+        supabase.storage.from_(bucket).upload(
+            path=filename,
+            file=file_bytes,
+            file_options={"upsert": "true"}
+        )
+        return True
+    except Exception as e:
+        print(f"Error subiendo a Storage: {e}")
+        return False
+
+def get_file_download_url(filename, bucket="documentos"):
+    """Obtiene la URL de descarga o pública de un archivo."""
+    supabase = get_supabase()
+    try:
+        # En Supabase se puede obtener una URL pública si el bucket es público
+        # o una URL firmada. Usaremos create_signed_url para mayor seguridad.
+        res = supabase.storage.from_(bucket).create_signed_url(filename, expires_in=3600)
+        return res.get('signedURL')
+    except Exception as e:
+        print(f"Error obteniendo URL: {e}")
+        return None
+
+def delete_file_from_storage(filename, bucket="documentos"):
+    """Elimina un archivo del storage."""
+    supabase = get_supabase()
+    try:
+        supabase.storage.from_(bucket).remove([filename])
+        return True
+    except:
+        return False
 
 def log_event(usuario_email, accion, descripcion, delegacion, motivo=None):
     supabase = get_supabase()
@@ -124,6 +182,23 @@ def validate_phone(phone):
     clean_phone = re.sub(r'[\s-]', '', phone)
     pattern = r'^(\+34|34)?[6789]\d{8}$'
     return re.match(pattern, clean_phone) is not None
+
+def get_status_color(expiry_date_str):
+    """Calcula el estado de caducidad (Semáforo)."""
+    if not expiry_date_str:
+        return None
+    try:
+        expiry_date = date.fromisoformat(expiry_date_str)
+        today = date.today()
+        days_left = (expiry_date - today).days
+        if days_left < 0:
+            return "🔴" # Caducado
+        elif days_left <= 30:
+            return "🟠" # Próximo a caducar
+        else:
+            return "🟢" # OK
+    except:
+        return None
 
 @st.cache_data(ttl=300)
 def get_estado_licencias_total():

@@ -10,7 +10,8 @@ from utils.db import (
     fetch_data, fetch_all_messengers, fetch_all_office_staff,
     fetch_single_record, update_record, add_record_and_get_id,
     dar_de_baja, update_file_path, get_estado_licencias_total,
-    validate_email, validate_phone
+    validate_email, validate_phone,
+    upload_file_to_storage, get_file_download_url, get_status_color
 )
 from utils.auth import render_login_form, logout, render_sidebar
 from utils.styles import apply_custom_styles
@@ -29,11 +30,10 @@ def display_documents_buttons(row_docs, record_id):
         file_list = [str(row_docs)]
 
     for i, file_name in enumerate(file_list):
-        doc_path = os.path.join(UPLOAD_DIR, file_name)
-        if os.path.exists(doc_path):
-            with open(doc_path, "rb") as f:
-                btn_label = "📄 Doc" if len(file_list) == 1 else f"📄 Doc {i+1}"
-                st.download_button(label=btn_label, data=f, file_name=file_name, key=f"dl_{record_id}_{i}", use_container_width=True)
+        url = get_file_download_url(file_name)
+        if url:
+            btn_label = "📄 Doc" if len(file_list) == 1 else f"📄 Doc {i+1}"
+            st.link_button(label=btn_label, url=url, use_container_width=True, key=f"dl_{record_id}_{i}")
 
 # --- FUNCIÓN DE GESTIÓN DE LICENCIAS ---
 def render_license_manager(current_list, key_prefix="edit"):
@@ -115,19 +115,23 @@ def render_lector_view(user_delegacion):
                     dhl = '✅ Sí' if row.get('DHL') else '❌ No'
                     adr = '✅ Sí' if row.get('ADR') else '❌ No'
                     
+                    status_adr = get_status_color(row.get('fecha_caducidad_adr'))
+                    status_lic = get_status_color(row.get('fecha_caducidad_licencia'))
+
                     col2.markdown(f"""
                         **Perfil:** {row.get('perfil_mensajero', 'N/A')} <br>
-                        **Licencias DL:** {codigos_str} <br>
-                        **Paq:** {paq} | **DHL:** {dhl} | **ADR:** {adr}
+                        **Licencias DL:** {codigos_str} {status_lic if status_lic else ''} <br>
+                        **Paq:** {paq} | **DHL:** {dhl} | **ADR:** {adr} {status_adr if status_adr else ''}
                     """, unsafe_allow_html=True)
                     
                     with col3:
                         display_documents_buttons(row.get('documento_path'), row['id'])
                         
                         foto_path = row.get('foto_vehiculo_path')
-                        if foto_path and os.path.exists(os.path.join(UPLOAD_DIR, foto_path)):
-                            with open(os.path.join(UPLOAD_DIR, foto_path), "rb") as file:
-                                st.download_button(label="📸 Foto", data=file, file_name=foto_path, use_container_width=True)
+                        if foto_path:
+                            foto_url = get_file_download_url(foto_path)
+                            if foto_url:
+                                st.link_button(label="📸 Foto", url=foto_url, use_container_width=True)
                         observaciones = row.get('observaciones')
                         if observaciones and observaciones != 'None':
                             with st.expander("Obs."):
@@ -286,12 +290,37 @@ def render_admin_view():
                     hace_paqueteria = st.checkbox("¿Hace paquetería?", value=record.get("hace_paqueteria", False))
                     dhl = st.checkbox("DHL", value=record.get("DHL", False))
                     adr = st.checkbox("ADR", value=record.get("ADR", False))
+
+                    col_exp1, col_exp2 = st.columns(2)
+                    with col_exp1:
+                        fecha_caducidad_adr = st.date_input("Caducidad ADR",
+                                                        value=date.fromisoformat(record.get("fecha_caducidad_adr")) if record.get("fecha_caducidad_adr") else None,
+                                                        help="Dejar vacío si no aplica")
+                    with col_exp2:
+                        fecha_caducidad_licencia = st.date_input("Caducidad Licencia DL",
+                                                             value=date.fromisoformat(record.get("fecha_caducidad_licencia")) if record.get("fecha_caducidad_licencia") else None,
+                                                             help="Dejar vacío si no aplica")
+
                     st.markdown("---")
                     if record.get("foto_vehiculo_path"):
                         c1, c2 = st.columns([3, 1]); c1.write(f"Foto actual: `{record['foto_vehiculo_path']}`")
                         if c2.button("Quitar Foto", key="rm_photo_btn"): update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", None); st.rerun()
                     foto_vehiculo = st.file_uploader("Adjuntar/Reemplazar foto del vehículo", key="foto_vehiculo_edit")
-                    data = {"nombre_apellido": nombre_apellido, "ruta": ruta, "perfil_mensajero": perfil_mensajero, "observaciones": observaciones, "movil": movil, "vehiculo_rotulado": vehiculo_rotulado, "email_personal": email_personal, "codigo_dl": codigos_dl_final, "hace_paqueteria": hace_paqueteria, "DHL": dhl, "ADR": adr}
+                    data = {
+                        "nombre_apellido": nombre_apellido,
+                        "ruta": ruta,
+                        "perfil_mensajero": perfil_mensajero,
+                        "observaciones": observaciones,
+                        "movil": movil,
+                        "vehiculo_rotulado": vehiculo_rotulado,
+                        "email_personal": email_personal,
+                        "codigo_dl": codigos_dl_final,
+                        "hace_paqueteria": hace_paqueteria,
+                        "DHL": dhl,
+                        "ADR": adr,
+                        "fecha_caducidad_adr": fecha_caducidad_adr.isoformat() if fecha_caducidad_adr else None,
+                        "fecha_caducidad_licencia": fecha_caducidad_licencia.isoformat() if fecha_caducidad_licencia else None
+                    }
                 else:
                     nombre_apellido = st.text_input("Nombre", value=record.get("nombre_apellido"))
                     posicion = st.text_input("Posición", value=record.get("posicion"))
@@ -313,9 +342,9 @@ def render_admin_view():
                     st.caption("Gestión de Documentos:")
                     for i, doc_name in enumerate(doc_list):
                         c1, c2, c3 = st.columns([6, 1, 1]); c1.text(f"📄 {doc_name}")
-                        doc_path = os.path.join(UPLOAD_DIR, doc_name)
-                        if os.path.exists(doc_path):
-                            with open(doc_path, "rb") as f: c2.download_button("📥", f, file_name=doc_name, key=f"dledit_{i}")
+                        url = get_file_download_url(doc_name)
+                        if url:
+                            c2.link_button("📥", url, key=f"dledit_{i}")
                         if c3.button("🗑️", key=f"rm_doc_{i}"):
                             doc_list.pop(i); new_val = json.dumps(doc_list) if doc_list else None
                             update_file_path(tabla_db, st.session_state.editing_id, "documento_path", new_val); st.rerun()
@@ -341,18 +370,20 @@ def render_admin_view():
                             st.error("Formato de móvil inválido.")
                             st.stop()
 
-                    update_record(tabla_db, st.session_state.editing_id, data)
+                    update_record(tabla_db, st.session_state.editing_id, data,
+                                  user_email=st.session_state.user_info['email'],
+                                  delegacion=delegacion_actual)
                     if uploaded_files:
                         current_list = doc_list.copy()
                         for up_file in uploaded_files:
                             filename = f"{st.session_state.editing_id}_{up_file.name}"
-                            with open(os.path.join(UPLOAD_DIR, filename), "wb") as f: f.write(up_file.getbuffer())
-                            current_list.append(filename)
+                            if upload_file_to_storage(up_file.getbuffer(), filename):
+                                current_list.append(filename)
                         update_file_path(tabla_db, st.session_state.editing_id, "documento_path", json.dumps(current_list))
                     if tabla_db == "mensajeros" and foto_vehiculo:
                         filename = f"vehiculo_{st.session_state.editing_id}_{foto_vehiculo.name}"
-                        with open(os.path.join(UPLOAD_DIR, filename), "wb") as f: f.write(foto_vehiculo.getbuffer())
-                        update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", filename)
+                        if upload_file_to_storage(foto_vehiculo.getbuffer(), filename):
+                            update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", filename)
                     st.toast("¡Registro actualizado correctamente!", icon="✅")
                     if f"temp_license_list_edit" in st.session_state: del st.session_state[f"temp_license_list_edit"]
                     st.session_state.editing_id = None; st.rerun()
@@ -378,6 +409,11 @@ def render_admin_view():
                         hace_paqueteria = st.checkbox("¿Hace paquetería?", key="add_paq")
                         dhl = st.checkbox("DHL", key="add_dhl")
                         adr = st.checkbox("ADR", key="add_adr")
+
+                        col_exp_a1, col_exp_a2 = st.columns(2)
+                        fecha_caducidad_adr = col_exp_a1.date_input("Caducidad ADR", value=None, key="add_exp_adr")
+                        fecha_caducidad_licencia = col_exp_a2.date_input("Caducidad Licencia DL", value=None, key="add_exp_lic")
+
                         foto_vehiculo=st.file_uploader("Adjuntar foto del vehículo", key="add_foto")
                     else:
                         nombre_apellido=st.text_input("Nombre y Apellido", key="add_nombre")
@@ -410,7 +446,15 @@ def render_admin_view():
 
                             data_form = {"nombre_apellido": nombre_apellido, "delegacion": delegacion_actual, "estado": "Activo"}
                             if tabla_db == "mensajeros":
-                                data_form.update({"ruta": ruta, "perfil_mensajero": perfil_mensajero, "observaciones": observaciones, "movil": movil, "vehiculo_rotulado": vehiculo_rotulado, "email_personal": email_personal, "codigo_dl": codigos_dl_final, "hace_paqueteria": hace_paqueteria, "DHL": dhl, "ADR": adr})
+                                data_form.update({
+                                    "ruta": ruta, "perfil_mensajero": perfil_mensajero,
+                                    "observaciones": observaciones, "movil": movil,
+                                    "vehiculo_rotulado": vehiculo_rotulado, "email_personal": email_personal,
+                                    "codigo_dl": codigos_dl_final, "hace_paqueteria": hace_paqueteria,
+                                    "DHL": dhl, "ADR": adr,
+                                    "fecha_caducidad_adr": fecha_caducidad_adr.isoformat() if fecha_caducidad_adr else None,
+                                    "fecha_caducidad_licencia": fecha_caducidad_licencia.isoformat() if fecha_caducidad_licencia else None
+                                })
                             else:
                                 data_form.update({"posicion": posicion, "telefono_oficina": telefono_oficina, "movil": movil, "correo_electronico": correo_electronico, "telefono_interno": telefono_interno})
 
@@ -420,13 +464,13 @@ def render_admin_view():
                                     saved_names = []
                                     for up_file in uploaded_files:
                                         filename = f"{new_id}_{up_file.name}"
-                                        with open(os.path.join(UPLOAD_DIR, filename), "wb") as f: f.write(up_file.getbuffer())
-                                        saved_names.append(filename)
+                                        if upload_file_to_storage(up_file.getbuffer(), filename):
+                                            saved_names.append(filename)
                                     update_file_path(tabla_db, new_id, "documento_path", json.dumps(saved_names))
                                 if tabla_db == "mensajeros" and foto_vehiculo:
                                     filename = f"vehiculo_{new_id}_{foto_vehiculo.name}"
-                                    with open(os.path.join(UPLOAD_DIR, filename), "wb") as f: f.write(foto_vehiculo.getbuffer())
-                                    update_file_path(tabla_db, new_id, "foto_vehiculo_path", filename)
+                                    if upload_file_to_storage(foto_vehiculo.getbuffer(), filename):
+                                        update_file_path(tabla_db, new_id, "foto_vehiculo_path", filename)
                                 st.toast("¡Nuevo personal añadido!", icon="✅")
                                 st.session_state.show_add_form = False
                                 if "temp_license_list_add" in st.session_state: del st.session_state["temp_license_list_add"]
@@ -480,13 +524,19 @@ def render_admin_view():
                             col1, col2, col3 = st.columns(3)
                             codigos_raw = row.get('codigo_dl')
                             codigos_display = (f"📚 {len(codigos_raw)} Licencias: " + ", ".join(codigos_raw)) if isinstance(codigos_raw, list) else (f"Licencia: {codigos_raw}" if codigos_raw else "Sin licencias")
+
+                            status_adr = get_status_color(row.get('fecha_caducidad_adr'))
+                            status_lic = get_status_color(row.get('fecha_caducidad_licencia'))
+
                             col1.markdown(f"<small><b>Ruta:</b> {row.get('ruta', 'N/A')}</small><br><small><b>Móvil:</b> {row.get('movil', 'N/A')}</small><br><small><b>Email:</b> {row.get('email_personal', 'N/A')}</small>", unsafe_allow_html=True)
-                            col2.markdown(f"<small><b>Perfil:</b> {row.get('perfil_mensajero', 'N/A')}</small><br><small><b>{codigos_display}</b></small><br><small><b>Paq:</b> {'✅ Sí' if row.get('hace_paqueteria') else '❌ No'} | <b>DHL:</b> {'✅ Sí' if row.get('DHL') else '❌ No'} | <b>ADR:</b> {'✅ Sí' if row.get('ADR') else '❌ No'}</small>", unsafe_allow_html=True)
+                            col2.markdown(f"<small><b>Perfil:</b> {row.get('perfil_mensajero', 'N/A')}</small><br><small><b>{codigos_display} {status_lic if status_lic else ''}</b></small><br><small><b>Paq:</b> {'✅ Sí' if row.get('hace_paqueteria') else '❌ No'} | <b>DHL:</b> {'✅ Sí' if row.get('DHL') else '❌ No'} | <b>ADR:</b> {'✅ Sí' if row.get('ADR') else '❌ No'} {status_adr if status_adr else ''}</small>", unsafe_allow_html=True)
                             with col3:
                                 display_documents_buttons(row.get('documento_path'), row['id'])
                                 foto_path = row.get('foto_vehiculo_path')
-                                if foto_path and os.path.exists(os.path.join(UPLOAD_DIR, foto_path)):
-                                    with open(os.path.join(UPLOAD_DIR, foto_path), "rb") as file: st.download_button(label="📸 Foto", data=file, file_name=foto_path, use_container_width=True)
+                                if foto_path:
+                                    foto_url = get_file_download_url(foto_path)
+                                    if foto_url:
+                                        st.link_button(label="📸 Foto", url=foto_url, use_container_width=True)
                                 if row.get('observaciones') and row.get('observaciones') != 'None':
                                     with st.expander("Obs."): st.write(row.get('observaciones'))
                         else: # Oficina
