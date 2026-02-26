@@ -1,24 +1,15 @@
 # Personal.py
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
 import os
 import io
 from datetime import date
+from utils.db import DELEGACIONES, fetch_data, fetch_single_record, update_record, add_record_and_get_id, dar_de_baja, update_file_path
+from utils.auth import check_auth, login, render_sidebar
 
-# --- CONFIGURACIÓN Y CONEXIÓN A SUPABASE ---
+# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Personal", page_icon="👥", layout="wide")
 UPLOAD_DIR = "uploads"; os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-@st.cache_resource
-def init_supabase_client():
-    try:
-        url, key = st.secrets["supabase_url"], st.secrets["supabase_key"]
-        return create_client(url, key)
-    except Exception:
-        st.error("Error al conectar con Supabase. Revisa tus credenciales."); st.stop()
-
-supabase: Client = init_supabase_client()
 
 # --- FUNCIONES DE AUTENTICACIÓN ---
 def render_login_form():
@@ -27,37 +18,8 @@ def render_login_form():
         email = st.text_input("Email")
         password = st.text_input("Contraseña", type="password")
         if st.form_submit_button("Acceder"):
-            try:
-                session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                user_id = session.user.id
-                response = supabase.table('profiles').select('role, delegacion').eq('user_id', user_id).single().execute()
-                profile = response.data or {}
-                st.session_state.user_info = {"email": email, "role": profile.get('role', 'Lector'), "delegacion": profile.get('delegacion')}
+            if login(email, password):
                 st.rerun()
-            except Exception:
-                st.error("Error: Email o contraseña incorrectos.")
-
-# --- FUNCIONES DE DB ---
-def fetch_data(table, delegacion):
-    return pd.DataFrame(supabase.table(table).select("*").eq('delegacion', delegacion).eq('estado', 'Activo').order('nombre_apellido').execute().data)
-
-def fetch_single_record(table_name, record_id):
-    response = supabase.table(table_name).select("*").eq('id', int(record_id)).single().execute()
-    return response.data if response.data else None
-
-def update_record(table, record_id, data):
-    supabase.table(table).update(data).eq('id', record_id).execute()
-
-def add_record_and_get_id(table, data):
-    response = supabase.table(table).insert(data, returning="representation").execute()
-    return response.data[0]['id'] if response.data else None
-
-def dar_de_baja(table, record_id, nombre):
-    supabase.table(table).update({"estado": "Baja", "fecha_baja": date.today().isoformat()}).eq('id', record_id).execute()
-    st.warning(f"'{nombre}' ha sido dado de baja."); st.rerun()
-    
-def update_file_path(table, record_id, column_name, filename):
-    supabase.table(table).update({column_name: filename}).eq('id', record_id).execute()
 
 # --- VISTA PARA LECTORES (SOLO LECTURA) ---
 def render_lector_view(user_delegacion):
@@ -106,11 +68,10 @@ def render_admin_view():
     # NAVEGACIÓN: PASO 1 - Elegir delegación
     if st.session_state.delegacion_seleccionada is None:
         st.title("🗺️ Selector de Delegaciones")
-        delegaciones = ['Granollers', 'Sabadell', 'Zona Franca', 'Manresa', 'Girona', 'Vilafranca']
         
         col1, col2, col3 = st.columns(3)
         columnas = [col1, col2, col3, col1, col2, col3] # Reutilizamos las columnas para la segunda fila
-        for i, delegacion in enumerate(delegaciones):
+        for i, delegacion in enumerate(DELEGACIONES):
             with columnas[i]:
                 if st.button(delegacion, use_container_width=True, key=f"btn_{delegacion}"):
                     st.session_state.delegacion_seleccionada = delegacion; st.rerun()
@@ -164,16 +125,19 @@ def render_admin_view():
             
             c1, c2 = st.columns([1, 6])
             if c1.form_submit_button("Guardar", use_container_width=True):
-                update_record(tabla_db, st.session_state.editing_id, data)
-                if uploaded_file:
-                    filename = f"{st.session_state.editing_id}_{uploaded_file.name}"; filepath = os.path.join(UPLOAD_DIR, filename)
-                    with open(filepath, "wb") as f: f.write(uploaded_file.getbuffer())
-                    update_file_path(tabla_db, st.session_state.editing_id, "documento_path", filename)
-                if tabla_db == "mensajeros" and foto_vehiculo:
-                    filename = f"vehiculo_{st.session_state.editing_id}_{foto_vehiculo.name}"; filepath = os.path.join(UPLOAD_DIR, filename)
-                    with open(filepath, "wb") as f: f.write(foto_vehiculo.getbuffer())
-                    update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", filename)
-                st.success("¡Registro actualizado!"); cancel_editing()
+                if not data.get("nombre_apellido"):
+                    st.error("El nombre es obligatorio.")
+                else:
+                    update_record(tabla_db, st.session_state.editing_id, data)
+                    if uploaded_file:
+                        filename = f"{st.session_state.editing_id}_{uploaded_file.name}"; filepath = os.path.join(UPLOAD_DIR, filename)
+                        with open(filepath, "wb") as f: f.write(uploaded_file.getbuffer())
+                        update_file_path(tabla_db, st.session_state.editing_id, "documento_path", filename)
+                    if tabla_db == "mensajeros" and foto_vehiculo:
+                        filename = f"vehiculo_{st.session_state.editing_id}_{foto_vehiculo.name}"; filepath = os.path.join(UPLOAD_DIR, filename)
+                        with open(filepath, "wb") as f: f.write(foto_vehiculo.getbuffer())
+                        update_file_path(tabla_db, st.session_state.editing_id, "foto_vehiculo_path", filename)
+                    st.toast("✅ ¡Registro actualizado!"); cancel_editing()
             if c2.form_submit_button("Cancelar", use_container_width=True): cancel_editing()
     
     # VISTA PRINCIPAL (Añadir y Listar)
@@ -188,7 +152,9 @@ def render_admin_view():
                         nombre_apellido=st.text_input("Nombre y Apellido"); posicion=st.text_input("Posición"); telefono_oficina=st.text_input("Teléfono Oficina"); movil=st.text_input("Móvil"); correo_electronico=st.text_input("Correo Electrónico"); telefono_interno=st.text_input("Teléfono Interno")
                     uploaded_file = st.file_uploader("Adjuntar documento (contrato, DNI, etc.)")
                     if st.form_submit_button("Añadir Personal"):
-                        if nombre_apellido:
+                        if not nombre_apellido:
+                            st.error("El nombre es un campo obligatorio.")
+                        else:
                             if tabla_db == "mensajeros": data_form = {"nombre_apellido": nombre_apellido, "ruta": ruta, "perfil_mensajero": perfil_mensajero, "vehiculo_empresa": vehiculo_empresa, "observaciones": observaciones, "movil": movil, "vehiculo_rotulado": vehiculo_rotulado}
                             else: data_form = {"nombre_apellido": nombre_apellido, "posicion": posicion, "telefono_oficina": telefono_oficina, "movil": movil, "correo_electronico": correo_electronico, "telefono_interno": telefono_interno}
                             data_form["delegacion"] = delegacion_actual; data_form["estado"] = "Activo"
@@ -202,8 +168,7 @@ def render_admin_view():
                                     filename = f"vehiculo_{new_id}_{foto_vehiculo.name}"; filepath = os.path.join(UPLOAD_DIR, filename)
                                     with open(filepath, "wb") as f: f.write(foto_vehiculo.getbuffer())
                                     update_file_path(tabla_db, new_id, "foto_vehiculo_path", filename)
-                            st.success("¡Nuevo personal añadido!"); st.rerun()
-                        else: st.error("El nombre es un campo obligatorio.")
+                            st.toast("✅ ¡Nuevo personal añadido!"); st.rerun()
         st.markdown("---")
         st.subheader("Listado de Personal Activo")
         df_activos = fetch_data(tabla_db, delegacion_actual)
@@ -237,23 +202,21 @@ def render_admin_view():
                         cols[-2].button("✏️", key=f"edit_{row['id']}", on_click=start_editing, args=[row['id']])
                     if st.session_state.user_info.get("role") == 'Admin':
                         if cols[-1].button("Dar de Baja", key=f"baja_{row['id']}", type="primary"):
-                            dar_de_baja(tabla_db, row['id'], row['nombre_apellido'])
+                            dar_de_baja(tabla_db, row['id'])
+                            st.toast(f"✅ '{row['nombre_apellido']}' ha sido dado de baja.")
+                            st.rerun()
             if not df_activos.empty:
                 output = io.BytesIO();
                 with pd.ExcelWriter(output, engine='openpyxl') as writer: df_activos.to_excel(writer, index=False, sheet_name='Personal')
                 st.download_button(label="📥 Exportar a Excel", data=output.getvalue(), file_name=f"personal_{delegacion_actual}.xlsx")
 
 # --- EJECUCIÓN PRINCIPAL ---
-if "user_info" not in st.session_state:
+if not check_auth():
     render_login_form()
 else:
+    render_sidebar()
     user_role = st.session_state.user_info.get("role", "Lector")
     user_delegacion = st.session_state.user_info.get("delegacion")
-    st.sidebar.success(f"Sesión iniciada")
-    st.sidebar.info(f"Rol: **{user_role}**")
-    if user_delegacion: st.sidebar.write(f"Delegación: **{user_delegacion}**")
-    if st.sidebar.button("Cerrar Sesión", use_container_width=True):
-        st.session_state.clear(); st.rerun()
 
     if user_role == "Lector" and user_delegacion:
         render_lector_view(user_delegacion)

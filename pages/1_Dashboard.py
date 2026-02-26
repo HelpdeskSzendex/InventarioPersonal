@@ -1,28 +1,17 @@
 # pages/1_Dashboard.py
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+from utils.db import get_supabase, DELEGACIONES
+from utils.auth import check_auth, render_sidebar
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Dashboard de Personal")
 
-# --- CONEXIÓN A SUPABASE ---
-@st.cache_resource
-def init_supabase_client():
-    try:
-        url, key = st.secrets["supabase_url"], st.secrets["supabase_key"]
-        return create_client(url, key)
-    except Exception:
-        st.error("No se pudo conectar a Supabase. Revisa tus credenciales.")
-        st.stop()
-
-supabase: Client = init_supabase_client()
-
-# --- COMPROBACIÓN DE ROL ---
-user_role = st.session_state.get("user_info", {}).get("role")
-if user_role != "Admin":
-    st.error("No tienes permiso para acceder a esta página.")
+# --- COMPROBACIÓN DE AUTENTICACIÓN Y ROL ---
+if not check_auth(required_role="Admin"):
     st.stop()
+
+render_sidebar()
 
 if st.button("Refrescar Datos ♻️"):
     st.cache_data.clear()
@@ -30,13 +19,22 @@ if st.button("Refrescar Datos ♻️"):
 
 st.markdown("Visión general del personal activo en la empresa.")
 
+# --- FILTROS ---
+delegaciones_seleccionadas = st.multiselect("Filtrar por Delegación", DELEGACIONES, default=DELEGACIONES)
+
 @st.cache_data(ttl=600)
 def fetch_all_data():
+    supabase = get_supabase()
     mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado").eq("estado", "Activo").execute()
     oficina_res = supabase.table("oficina").select("delegacion").eq("estado", "Activo").execute()
     return pd.DataFrame(mensajeros_res.data), pd.DataFrame(oficina_res.data)
 
 df_mensajeros, df_oficina = fetch_all_data()
+
+# Filtrar por delegación
+if delegaciones_seleccionadas:
+    df_mensajeros = df_mensajeros[df_mensajeros['delegacion'].isin(delegaciones_seleccionadas)]
+    df_oficina = df_oficina[df_oficina['delegacion'].isin(delegaciones_seleccionadas)]
 
 # --- MÉTRICAS PRINCIPALES ---
 col1, col2, col3 = st.columns(3)

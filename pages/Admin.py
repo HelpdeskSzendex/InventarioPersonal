@@ -1,29 +1,19 @@
 # pages/Admin.py
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+from utils.db import get_supabase_admin
+from utils.auth import check_auth, render_sidebar
 
 st.set_page_config(page_title="Panel de Administración", page_icon="🔑", layout="wide")
 st.title("🔑 Panel de Administración de Usuarios")
 
-# --- CONEXIÓN A SUPABASE CON PERMISOS DE ADMIN ---
-@st.cache_resource
-def init_supabase_admin_client():
-    try:
-        url = st.secrets["supabase_url"]
-        service_key = st.secrets["supabase_service_key"]
-        return create_client(url, service_key)
-    except Exception:
-        st.error("No se pudo conectar a Supabase. Revisa tus credenciales.")
-        st.stop()
-
-supabase_admin: Client = init_supabase_admin_client()
-
-# --- COMPROBACIÓN DE ROL ---
-user_role = st.session_state.get("user_info", {}).get("role")
-if user_role != "Admin":
-    st.error("No tienes permiso para acceder a esta página.")
+# --- COMPROBACIÓN DE AUTENTICACIÓN Y ROL ---
+if not check_auth(required_role="Admin"):
     st.stop()
+
+render_sidebar()
+
+supabase_admin = get_supabase_admin()
 
 # --- AÑADIR NUEVO USUARIO ---
 st.subheader("Añadir Nuevo Usuario")
@@ -64,14 +54,15 @@ st.subheader("Gestionar Usuarios Existentes")
 try:
     auth_users_response = supabase_admin.auth.admin.list_users()
     
-    # --- LÍNEA CORREGIDA ---
-    # La respuesta ya es la lista de usuarios, no un objeto que la contiene.
-    auth_users = auth_users_response
+    # Check if response is a list or has a .users attribute
+    if hasattr(auth_users_response, 'users'):
+        auth_users = auth_users_response.users
+    else:
+        auth_users = auth_users_response
     
     profiles_response = supabase_admin.table('profiles').select("user_id, role, delegacion").execute()
     profiles_map = {p['user_id']: p for p in profiles_response.data}
 
-    # El resto del código funciona igual
     for user in auth_users:
         profile = profiles_map.get(user.id, {})
         role = profile.get('role', 'No asignado')

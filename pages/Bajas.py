@@ -1,34 +1,23 @@
 # pages/Bajas.py
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+from utils.db import get_supabase
+from utils.auth import check_auth, render_sidebar
 
 st.set_page_config(page_title="Registro de Bajas", page_icon="📋", layout="wide")
 st.title("📋 Registro Histórico de Bajas")
 
-# --- CONEXIÓN A SUPABASE ---
-@st.cache_resource
-def init_supabase_client():
-    try:
-        url, key = st.secrets["supabase_url"], st.secrets["supabase_key"]
-        return create_client(url, key)
-    except Exception:
-        st.error("No se pudo conectar a Supabase. Revisa tus credenciales.")
-        st.stop()
+# --- COMPROBACIÓN DE AUTENTICACIÓN Y ROL ---
+if not check_auth(required_role="Admin"):
+    st.stop()
 
-supabase: Client = init_supabase_client()
-
-# --- COMPROBACIÓN DE ROL ---
-# Asegurarse de que el usuario ha iniciado sesión y tiene el rol correcto
-user_role = st.session_state.get("user_info", {}).get("role")
-if user_role != "Admin":
-    st.error("No tienes permiso para acceder a esta página.")
-    st.stop() # Detiene la ejecución si no es Admin
+render_sidebar()
 
 # --- FUNCIÓN PARA OBTENER DATOS ---
-@st.cache_data(ttl=300) # La caché se refresca cada 5 minutos
+@st.cache_data(ttl=300)
 def fetch_all_bajas():
     """Obtiene y une las bajas de ambas tablas desde Supabase."""
+    supabase = get_supabase()
     
     # 1. Obtener bajas de mensajeros
     res_mensajeros = supabase.table("mensajeros").select("delegacion, nombre_apellido, fecha_baja").eq("estado", "Baja").execute()
@@ -49,4 +38,8 @@ df_bajas = fetch_all_bajas()
 if df_bajas.empty:
     st.info("Aún no se ha registrado ninguna baja.")
 else:
+    search_query = st.text_input("Buscar por nombre", key="search_bajas")
+    if search_query:
+        df_bajas = df_bajas[df_bajas["nombre_apellido"].str.contains(search_query, case=False, na=False)]
+
     st.dataframe(df_bajas, use_container_width=True, hide_index=True)
