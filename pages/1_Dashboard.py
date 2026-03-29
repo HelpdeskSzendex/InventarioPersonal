@@ -1,69 +1,91 @@
 # pages/1_Dashboard.py
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+from app_logic.db import get_supabase
+from app_logic.auth import check_role, render_sidebar
+from app_logic.styles import apply_custom_styles
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
-st.title("📊 Dashboard de Personal")
-
-# --- CONEXIÓN A SUPABASE ---
-@st.cache_resource
-def init_supabase_client():
-    try:
-        url, key = st.secrets["supabase_url"], st.secrets["supabase_key"]
-        return create_client(url, key)
-    except Exception:
-        st.error("No se pudo conectar a Supabase. Revisa tus credenciales.")
-        st.stop()
-
-supabase: Client = init_supabase_client()
+apply_custom_styles()
+render_sidebar()
 
 # --- COMPROBACIÓN DE ROL ---
-user_role = st.session_state.get("user_info", {}).get("role")
-if user_role != "Admin":
-    st.error("No tienes permiso para acceder a esta página.")
-    st.stop()
+check_role(["Admin", "Editor", "Lector"])
 
-if st.button("Refrescar Datos ♻️"):
+st.markdown('<p class="main-header">📊 Dashboard de Personal</p>', unsafe_allow_html=True)
+
+if st.button("Refrescar Datos ♻️", use_container_width=True):
     st.cache_data.clear()
-    st.success("Datos actualizados.")
+    st.toast("Datos actualizados.", icon="✅")
 
 st.markdown("Visión general del personal activo en la empresa.")
 
 @st.cache_data(ttl=600)
-def fetch_all_data():
-    mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado, ADR, nombre_apellido").eq("estado", "Activo").execute()
+def fetch_dashboard_data():
+    supabase = get_supabase()
+    mensajeros_res = supabase.table("mensajeros").select("delegacion, perfil_mensajero, vehiculo_rotulado, ADR, nombre_apellido, fecha_caducidad_adr, fecha_caducidad_licencia").eq("estado", "Activo").execute()
     oficina_res = supabase.table("oficina").select("delegacion").eq("estado", "Activo").execute()
     return pd.DataFrame(mensajeros_res.data), pd.DataFrame(oficina_res.data)
 
-df_mensajeros, df_oficina = fetch_all_data()
+with st.spinner("Cargando métricas..."):
+    df_mensajeros, df_oficina = fetch_dashboard_data()
 
 # Calcular Total ADR
 total_adr = 0
 if not df_mensajeros.empty and 'ADR' in df_mensajeros.columns:
-    # Asegurar tipo booleano
     df_mensajeros['ADR'] = df_mensajeros['ADR'].fillna(False).astype(bool)
     total_adr = df_mensajeros[df_mensajeros['ADR'] == True].shape[0]
 
 # --- 1. MÉTRICAS PRINCIPALES ---
+st.markdown('<p class="sub-header">Métricas Principales</p>', unsafe_allow_html=True)
+
+# Cálculos adicionales
+total_mensajeros = len(df_mensajeros)
+total_oficina = len(df_oficina)
+total_plantilla = total_mensajeros + total_oficina
+
+# Cumplimiento ADR
+adr_rate = (total_adr / total_mensajeros * 100) if total_mensajeros > 0 else 0
+
+# Promedio mensajeros por delegación (asumiendo delegaciones activas en los datos)
+num_delegaciones = df_mensajeros['delegacion'].nunique() if not df_mensajeros.empty else 1
+avg_mensajeros = total_mensajeros / num_delegaciones if num_delegaciones > 0 else 0
+
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Mensajeros", f"{len(df_mensajeros)} 🚚")
-col2.metric("Total Oficina", f"{len(df_oficina)} 💼")
-col3.metric("Total Plantilla", f"{len(df_mensajeros) + len(df_oficina)} 👥")
-col4.metric("Con Certificado ADR", f"{total_adr} ☢️", help="Mensajeros activos con casilla ADR marcada")
+col1.metric("Total Mensajeros", f"{total_mensajeros} 🚚")
+col2.metric("Total Oficina", f"{total_oficina} 💼")
+col3.metric("Total Plantilla", f"{total_plantilla} 👥")
+col4.metric("Tasa ADR", f"{adr_rate:.1f}% ☢️", help="Porcentaje de mensajeros con ADR")
+
+st.markdown("---")
+# Segunda fila de métricas
+col5, col6, col7, col8 = st.columns(4)
+with col5:
+    st.metric("Promedio Mens./Delegación", f"{avg_mensajeros:.1f}")
+with col6:
+    total_rotulados = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Si'].shape[0] if not df_mensajeros.empty else 0
+    st.metric("Total Rotulados", f"{total_rotulados} ✅")
+with col7:
+    total_sin_rotular = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'No'].shape[0] if not df_mensajeros.empty else 0
+    st.metric("Total Sin Rotular", f"{total_sin_rotular} ❌")
+with col8:
+    total_pendientes = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Pendiente de rotular'].shape[0] if not df_mensajeros.empty else 0
+    st.metric("Total Pendientes", f"{total_pendientes} ⏳")
 
 st.markdown("---")
 
 # --- 2. GRÁFICOS GENERALES ---
+st.markdown('<p class="sub-header">Distribución de Personal</p>', unsafe_allow_html=True)
+
 col_a, col_b = st.columns(2)
 with col_a:
-    st.subheader("Personal por Delegación")
+    st.markdown("**Personal por Delegación**")
     if not df_mensajeros.empty or not df_oficina.empty:
         personal_total = pd.concat([df_mensajeros[['delegacion']], df_oficina[['delegacion']]])
         conteo_delegacion = personal_total['delegacion'].value_counts()
         st.bar_chart(conteo_delegacion)
 with col_b:
-    st.subheader("Perfiles de Mensajeros")
+    st.markdown("**Perfiles de Mensajeros**")
     if not df_mensajeros.empty:
         conteo_perfil = df_mensajeros['perfil_mensajero'].value_counts()
         st.bar_chart(conteo_perfil)
@@ -71,10 +93,9 @@ with col_b:
 st.markdown("---") 
 
 # --- 3. SECCIÓN DE ESTADO DE VEHÍCULOS ---
-st.subheader("🚚 Estado de Rotulación de Vehículos")
+st.markdown('<p class="sub-header">🚚 Estado de Rotulación de Vehículos</p>', unsafe_allow_html=True)
 
 if not df_mensajeros.empty:
-    # Contadores totales
     conteo_estados = df_mensajeros['vehiculo_rotulado'].value_counts()
     total_rotulados = conteo_estados.get('Si', 0)
     total_sin_rotular = conteo_estados.get('No', 0)
@@ -83,29 +104,64 @@ if not df_mensajeros.empty:
     col_r1, col_r2, col_r3 = st.columns(3)
     col_r1.metric("✅ Total Rotulados", total_rotulados)
     col_r2.metric("❌ Total Sin Rotular", total_sin_rotular)
-    col_r3.metric("⏳ Total Pendientes", total_pendientes, help="Vehículos cuya rotulación ha sido aceptada pero aún no se ha completado.")
+    col_r3.metric("⏳ Total Pendientes", total_pendientes)
 
-    # Gráfica detallada por delegación
-    st.markdown("#### Detalle de Rotulados por Delegación")
-    df_rotulados = df_mensajeros[df_mensajeros['vehiculo_rotulado'] == 'Si']
-    if not df_rotulados.empty:
-        conteo_rotulados_delegacion = df_rotulados['delegacion'].value_counts()
-        st.bar_chart(conteo_rotulados_delegacion)
-    else:
-        st.info("No hay vehículos registrados como 'Si' rotulados para mostrar en la gráfica.")
+    st.markdown("**Estado de Rotulación por Delegación**")
+    # Crear un DataFrame para la gráfica agrupada
+    df_rot_deleg = df_mensajeros.groupby(['delegacion', 'vehiculo_rotulado']).size().reset_index(name='count')
+    st.bar_chart(df_rot_deleg, x='delegacion', y='count', color='vehiculo_rotulado', stack=False)
 else:
-    st.info("No hay datos de mensajeros para mostrar el estado de los vehículos.")
+    st.info("No hay datos de mensajeros.")
 
 st.markdown("---")
 
-# --- 4. NUEVA SECCIÓN: LISTADO DE PERSONAS CON ADR (MOVIDO AQUÍ ABAJO) ---
+# --- 4. ALERTAS DE CADUCIDAD ---
+st.markdown('<p class="sub-header">⚠️ Alertas de Documentación</p>', unsafe_allow_html=True)
+
+if not df_mensajeros.empty:
+    today = pd.Timestamp.now().normalize()
+
+    # Asegurar formato fecha
+    df_mensajeros['fecha_caducidad_adr'] = pd.to_datetime(df_mensajeros['fecha_caducidad_adr'], errors='coerce')
+    df_mensajeros['fecha_caducidad_licencia'] = pd.to_datetime(df_mensajeros['fecha_caducidad_licencia'], errors='coerce')
+
+    # Filtrar caducados o próximos (<30 días)
+    caducados_adr = df_mensajeros[df_mensajeros['fecha_caducidad_adr'] < today]
+    proximos_adr = df_mensajeros[(df_mensajeros['fecha_caducidad_adr'] >= today) & (df_mensajeros['fecha_caducidad_adr'] <= today + pd.Timedelta(days=30))]
+
+    caducados_lic = df_mensajeros[df_mensajeros['fecha_caducidad_licencia'] < today]
+    proximos_lic = df_mensajeros[(df_mensajeros['fecha_caducidad_licencia'] >= today) & (df_mensajeros['fecha_caducidad_licencia'] <= today + pd.Timedelta(days=30))]
+
+    if caducados_adr.empty and proximos_adr.empty and caducados_lic.empty and proximos_lic.empty:
+        st.success("Toda la documentación está al día. ✅")
+    else:
+        col_err1, col_err2 = st.columns(2)
+        with col_err1:
+            if not caducados_adr.empty or not caducados_lic.empty:
+                st.error(f"Se han detectado {len(caducados_adr) + len(caducados_lic)} documentos CADUCADOS.")
+                if not caducados_adr.empty:
+                    st.write("**ADR Caducado:**")
+                    st.dataframe(caducados_adr[['nombre_apellido', 'delegacion', 'fecha_caducidad_adr']], hide_index=True, use_container_width=True)
+                if not caducados_lic.empty:
+                    st.write("**Licencia DL Caducada:**")
+                    st.dataframe(caducados_lic[['nombre_apellido', 'delegacion', 'fecha_caducidad_licencia']], hide_index=True, use_container_width=True)
+
+        with col_err2:
+            if not proximos_adr.empty or not proximos_lic.empty:
+                st.warning(f"Hay {len(proximos_adr) + len(proximos_lic)} documentos próximos a caducar (<30 días).")
+                if not proximos_adr.empty:
+                    st.write("**ADR por Caducar:**")
+                    st.dataframe(proximos_adr[['nombre_apellido', 'delegacion', 'fecha_caducidad_adr']], hide_index=True, use_container_width=True)
+                if not proximos_lic.empty:
+                    st.write("**Licencia DL por Caducar:**")
+                    st.dataframe(proximos_lic[['nombre_apellido', 'delegacion', 'fecha_caducidad_licencia']], hide_index=True, use_container_width=True)
+
+st.markdown("---")
+
+# --- 5. LISTADO DE PERSONAS CON ADR ---
 if total_adr > 0:
-    st.subheader("☢️ Listado de Personal con ADR")
-    
-    # Filtramos solo los que tienen ADR
+    st.markdown('<p class="sub-header">☢️ Listado de Personal con ADR</p>', unsafe_allow_html=True)
     df_adr_list = df_mensajeros[df_mensajeros['ADR'] == True][['nombre_apellido', 'delegacion', 'perfil_mensajero']]
-    
-    # Mostramos la tabla limpia
     st.dataframe(
         df_adr_list,
         use_container_width=True,
